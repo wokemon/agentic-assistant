@@ -1,4 +1,4 @@
-export type Role = 'system' | 'user' | 'assistant' | 'tool';
+export type Role = "system" | "user" | "assistant" | "tool";
 
 export interface Message {
   role: Role;
@@ -6,11 +6,12 @@ export interface Message {
 }
 
 export interface ToolCall {
-    tool: string;
-    args: Record<string, any>;
+  tool: string;
+  args: Record<string, any>;
 }
 
 export interface AgentResponse {
-    thought?: string;
-    tool_calls?: ToolCall;
-    finalAnswer?: string;
+  thought?: string;
+  toolCall?: ToolCall;
+  finalAnswer?: string;
+}

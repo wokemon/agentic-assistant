@@ -3,8 +3,10 @@ import { generateResponse } from "../llm/client";
 import { SYSTEM_PROMPT } from "./prompt";
 import { tools } from "../tools/registy";
 
+const MAX_ITERATIONS = 5;
+
 export async function runAgent(userPrompt: string) {
-  const messages: any[] = [
+  const messages = [
     {
       role: "system",
       content: SYSTEM_PROMPT,
@@ -15,11 +17,11 @@ export async function runAgent(userPrompt: string) {
     },
   ];
 
-  while (true) {
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
     const response = await generateResponse(messages);
 
-    // console.log("\nMODEL RESPONSE:\n");
-    // console.log(response);
+    console.log("\nMODEL RESPONSE:\n");
+    console.log(response);
 
     messages.push({
       role: "assistant",
@@ -28,15 +30,15 @@ export async function runAgent(userPrompt: string) {
 
     const parsed = parseAgentResponse(response);
 
-    // Final answer
+    // FINAL ANSWER
     if (parsed.finalAnswer) {
       console.log("\nFINAL ANSWER:\n");
       console.log(parsed.finalAnswer);
 
-      break;
+      return;
     }
 
-    // Tool call
+    // TOOL CALL
     if (parsed.toolCall) {
       const { tool, args } = parsed.toolCall;
 
@@ -76,6 +78,14 @@ ${err.message}
 `,
         });
       }
+
+      continue;
     }
+
+    // INVALID OUTPUT
+    console.log("\nInvalid model response.");
+    return;
   }
+
+  console.log("\nMax iterations reached.");
 }

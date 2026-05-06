@@ -1,8 +1,11 @@
 import { AgentResponse, ToolCall } from "./types";
 
 export function parseAgentResponse(content: string): AgentResponse {
+  const trimmed = content.trim();
+
+  // TOOL CALL
   try {
-    const parsed: ToolCall = JSON.parse(content);
+    const parsed: ToolCall = JSON.parse(trimmed);
 
     if (parsed.tool) {
       return {
@@ -10,10 +13,16 @@ export function parseAgentResponse(content: string): AgentResponse {
       };
     }
   } catch {
-    // not JSON
+    // not json
   }
 
-  return {
-    finalAnswer: content,
-  };
+  // FINAL ANSWER
+  if (trimmed.startsWith("FINAL:")) {
+    return {
+      finalAnswer: trimmed.replace("FINAL:", "").trim(),
+    };
+  }
+
+  // INVALID RESPONSE
+  return {};
 }

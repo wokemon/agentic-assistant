@@ -23,6 +23,7 @@ export async function runAgent(userPrompt: string) {
     console.log("\nMODEL RESPONSE:\n");
     console.log(response);
 
+    // Save assistant response
     messages.push({
       role: "assistant",
       content: response,
@@ -44,10 +45,18 @@ export async function runAgent(userPrompt: string) {
 
       const selectedTool = tools[tool];
 
+      // Unknown tool
       if (!selectedTool) {
         messages.push({
           role: "user",
-          content: `TOOL ERROR: Tool "${tool}" not found.`,
+          content: `
+TOOL ERROR:
+Tool "${tool}" does not exist.
+
+Available tools:
+- list_files
+- read_file
+`,
         });
 
         continue;
@@ -74,6 +83,9 @@ ${result}
           role: "user",
           content: `
 TOOL ERROR:
+Tool: ${tool}
+
+Message:
 ${err.message}
 `,
         });
@@ -82,10 +94,29 @@ ${err.message}
       continue;
     }
 
-    // INVALID OUTPUT
-    console.log("\nInvalid model response.");
-    return;
+    // INVALID FORMAT RECOVERY
+    messages.push({
+      role: "user",
+      content: `
+INVALID RESPONSE FORMAT.
+
+You must respond in EXACTLY ONE of these formats.
+
+Tool call format:
+
+{
+  "tool": "tool_name",
+  "args": {
+    "key": "value"
+  }
+}
+
+Final answer format:
+
+FINAL: your answer
+`,
+    });
   }
 
-  console.log("\nMax iterations reached.");
+  console.log("\nAgent stopped: max iterations reached.");
 }

@@ -15,16 +15,26 @@ export async function runAgent(userPrompt: string) {
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     console.log(`\n--- ITERATION ${i + 1} ---`);
 
-    const response = await generateResponse(history.getAll());
+    const messages = history.getAll();
+
+    // Debug visibility
+    console.log("\nMESSAGE HISTORY:\n");
+    console.dir(messages, { depth: null });
+
+    const response = await generateResponse(messages);
 
     console.log("\nMODEL RESPONSE:\n");
     console.log(response);
 
+    // Save assistant response
     history.add("assistant", response);
 
     const parsed = parseAgentResponse(response);
 
-    // final answer
+    console.log("\nPARSED RESPONSE:\n");
+    console.dir(parsed, { depth: null });
+
+    // FINAL ANSWER
     if (parsed.finalAnswer) {
       console.log("\nFINAL ANSWER:\n");
       console.log(parsed.finalAnswer);
@@ -32,16 +42,27 @@ export async function runAgent(userPrompt: string) {
       return;
     }
 
-    // tool call
+    // TOOL CALL
     if (parsed.toolCall) {
       const { tool, args } = parsed.toolCall;
 
+      console.log(`\nTOOL REQUESTED: ${tool}`);
+      console.log("ARGS:", args);
+
       const selectedTool = tools[tool];
 
+      // Tool does not exist
       if (!selectedTool) {
-        const error = `Tool not found: ${tool}`;
+        const errorObservation = `
+TOOL ERROR:
+Tool "${tool}" does not exist.
+`;
 
-        history.add("tool", error);
+        console.log(errorObservation);
+
+        // IMPORTANT:
+        // DO NOT use role: "tool"
+        history.add("user", errorObservation);
 
         continue;
       }
@@ -49,21 +70,42 @@ export async function runAgent(userPrompt: string) {
       try {
         const result = await selectedTool(...Object.values(args));
 
-        const observation = `Tool Result:\n${result}`;
+        const observation = `
+TOOL RESULT:
+Tool: ${tool}
+
+Output:
+${result}
+`;
 
         console.log("\nTOOL RESULT:\n");
         console.log(observation);
 
-        history.add("tool", observation);
+        // IMPORTANT:
+        // ReAct-style loops feed observations back as user/system context
+        history.add("user", observation);
       } catch (err: any) {
-        const errorMessage = `Tool Error: ${err.message}`;
+        const errorObservation = `
+TOOL ERROR:
+Tool: ${tool}
 
-        console.log(errorMessage);
+Message:
+${err.message}
+`;
 
-        history.add("tool", errorMessage);
+        console.log("\nTOOL ERROR:\n");
+        console.log(errorObservation);
+
+        history.add("user", errorObservation);
       }
+
+      continue;
     }
+
+    // INVALID OUTPUT
+    console.log("\nAgent produced invalid response format.");
+    break;
   }
 
-  console.log("Agent stopped: max iterations reached.");
+  console.log("\nAgent stopped: max iterations reached.");
 }

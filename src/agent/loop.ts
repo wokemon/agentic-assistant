@@ -3,7 +3,7 @@ import { generateResponse } from "../llm/client";
 import { SYSTEM_PROMPT } from "./prompt";
 import { tools } from "../tools/registy";
 
-const MAX_ITERATIONS = 5;
+const MAX_ITERATIONS = 2;
 
 export async function runAgent(userPrompt: string) {
   const messages = [

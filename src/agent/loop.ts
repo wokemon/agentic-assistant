@@ -5,11 +5,13 @@ import { tools } from "../tools/registry";
 
 const MAX_ITERATIONS = 5;
 
+// Define message type for conversation history
 type Message = {
   role: "system" | "user" | "assistant";
   content: string;
 };
 
+// Main agent loop
 export async function runAgent(userPrompt: string) {
   const messages: Message[] = [
     {
@@ -22,6 +24,7 @@ export async function runAgent(userPrompt: string) {
     },
   ];
 
+  // Iterative agent loop
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     console.log(`\n========== ITERATION ${iteration + 1} ==========\n`);
 

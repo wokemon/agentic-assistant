@@ -1,17 +1,35 @@
 import fs from "fs/promises";
 import path from "path";
 
-export async function readFiles(paths: string[]) {
-  const results: Record<string, string> = {};
-  for (const p of paths) {
-    try {
-      const absolutePath = path.resolve(p);
+export async function readFiles(
+  input: string | string[],
+  options?: { preview?: boolean },
+) {
+  const paths = Array.isArray(input) ? input : [input];
 
+  const files = [];
+
+  for (const filePath of paths) {
+    try {
+      const absolutePath = path.resolve(filePath);
       const content = await fs.readFile(absolutePath, "utf-8");
-      results[p] = content;
+
+      files.push({
+        path: filePath,
+        content: options?.preview
+          ? content.split("\n").slice(0, 20).join("\n") + "\n...[truncated]"
+          : content,
+      });
     } catch (error) {
-      results[p] = error instanceof Error ? error.message : String(error);
+      files.push({
+        path: filePath,
+        content:
+          error instanceof Error
+            ? `Error reading file: ${error.message}`
+            : "Unknown error",
+      });
     }
   }
-  return results;
+
+  return { files };
 }

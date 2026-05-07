@@ -1,28 +1,40 @@
-import { AgentResponse, ToolCall } from "./types";
+export function parseAgentResponse(response: string) {
+  response = response.trim();
 
-export function parseAgentResponse(content: string): AgentResponse {
-  const trimmed = content.trim();
-
-  // TOOL CALL
+  // ----------------------------
+  // 1. TRY TOOL CALL (JSON mode)
+  // ----------------------------
   try {
-    const parsed: ToolCall = JSON.parse(trimmed);
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
 
-    if (parsed.tool) {
-      return {
-        toolCall: parsed,
-      };
+      if (parsed.tool && parsed.args) {
+        return {
+          toolCall: {
+            tool: parsed.tool,
+            args: parsed.args,
+          },
+        };
+      }
     }
-  } catch {
-    // not json
+  } catch (e) {
+    // ignore JSON errors, fallback below
   }
 
-  // FINAL ANSWER
-  if (trimmed.startsWith("FINAL:")) {
+  // ----------------------------
+  // 2. FINAL ANSWER MODE
+  // ----------------------------
+  if (response.includes("FINAL:")) {
     return {
-      finalAnswer: trimmed.replace("FINAL:", "").trim(),
+      finalAnswer: response.split("FINAL:")[1].trim(),
     };
   }
 
-  // INVALID RESPONSE
-  return {};
+  // ----------------------------
+  // 3. FALLBACK (safe failure)
+  // ----------------------------
+  return {
+    invalid: true,
+  };
 }

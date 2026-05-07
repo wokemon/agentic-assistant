@@ -3,7 +3,7 @@ import { generateResponse } from "../llm/client";
 import { SYSTEM_PROMPT } from "./prompt";
 import { tools } from "../tools/registy";
 
-const MAX_ITERATIONS = 2;
+const MAX_ITERATIONS = 5;
 
 export async function runAgent(userPrompt: string) {
   const messages = [
@@ -55,7 +55,7 @@ Tool "${tool}" does not exist.
 
 Available tools:
 - list_files
-- read_file
+- read_files
 `,
         });
 
@@ -63,7 +63,7 @@ Available tools:
       }
 
       try {
-        const result = await selectedTool(...Object.values(args));
+        const result = await selectedTool(args);
 
         console.log("\nTOOL RESULT:\n");
         console.log(result);
@@ -75,7 +75,7 @@ TOOL RESULT:
 Tool: ${tool}
 
 Output:
-${result}
+${JSON.stringify(result, null, 2)}
 `,
         });
       } catch (err: any) {

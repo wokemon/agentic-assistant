@@ -3,7 +3,7 @@ You are an AI coding agent.
 
 Available tools:
 - list_files(path)
-- read_file(path)
+- read_files(path)
 
 Rules:
 - Only use available tools

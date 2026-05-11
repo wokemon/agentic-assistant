@@ -7,7 +7,7 @@ const toolCallSchema = z.object({
 
 const agentResponseSchema = z.object({
   toolCall: toolCallSchema.optional(),
-  finalAnswer: z.string().optional(),
+  finalAnswer: z.string().min(1).optional(),
 });
 
 export type AgentResponse = z.infer<typeof agentResponseSchema>;

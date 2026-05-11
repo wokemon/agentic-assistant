@@ -3,8 +3,10 @@ import { generateResponse } from "../llm/client";
 import { SYSTEM_PROMPT } from "./prompt";
 import { tools } from "../tools/registry";
 import { Message } from "./types";
+import { LoopGuard } from "../safety/loopGuards";
 
 const MAX_ITERATIONS = 5;
+const loopGuard = new LoopGuard();
 
 export async function runAgent(userInput: string) {
   const history: Message[] = [
@@ -74,19 +76,39 @@ export async function runAgent(userInput: string) {
     // ----------------------------
 
     if (response.toolCall) {
-      const tool = tools[response.toolCall.tool];
+      const { tool: toolName, args } = response.toolCall;
+
+      const tool = tools[toolName];
+
+      // ----------------------------
+      // TOOL EXISTS?
+      // ----------------------------
 
       if (!tool) {
         history.push({
           role: "system",
-          content: `Tool "${response.toolCall.tool}" does not exist.`,
+          content: `Tool "${toolName}" does not exist.`,
         });
 
         continue;
       }
 
+      // ----------------------------
+      // DUPLICATE DETECTION
+      // ----------------------------
+
+      if (loopGuard.isRepeating(toolName, args)) {
+        return `Agent stopped: repeating tool call detected (${toolName}).`;
+      }
+
+      loopGuard.addAction(toolName, args);
+
+      // ----------------------------
+      // EXECUTE TOOL
+      // ----------------------------
+
       try {
-        const result = await tool.execute(response.toolCall.args);
+        const result = await tool.execute(args);
 
         history.push({
           role: "system",

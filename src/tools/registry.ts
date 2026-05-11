@@ -1,7 +1,10 @@
-import { listFiles } from "./listFiles";
-import { readFiles } from "./readFiles";
+import { ToolDefinition } from "./types";
 
-export const tools: Record<string, Function> = {
-  list_files: listFiles,
-  read_files: readFiles,
+import { listFilesTool } from "./filesystem/listFiles";
+import { readFilesTool } from "./filesystem/readFiles";
+
+export const tools: Record<string, ToolDefinition> = {
+  [listFilesTool.name]: listFilesTool,
+
+  [readFilesTool.name]: readFilesTool,
 };

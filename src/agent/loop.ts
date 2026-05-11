@@ -1,15 +1,12 @@
 import { parseAgentResponse } from "./parser";
 import { generateResponse } from "../llm/client";
 import { SYSTEM_PROMPT } from "./prompt";
+
 import { tools } from "../tools/registry";
 
-const MAX_ITERATIONS = 5;
+import { Message, ToolResult } from "./types";
 
-// Define message type for conversation history
-type Message = {
-  role: "system" | "user" | "assistant";
-  content: string;
-};
+const MAX_ITERATIONS = 5;
 
 // Main agent loop
 export async function runAgent(userPrompt: string) {
@@ -68,21 +65,24 @@ export async function runAgent(userPrompt: string) {
 
       const selectedTool = tools[tool];
 
-      // Unknown tool handling
+      // ----------------------------
+      // 5. UNKNOWN TOOL HANDLING
+      // ----------------------------
       if (!selectedTool) {
         const errorMessage = `
 TOOL ERROR:
 Unknown tool "${tool}"
 
 Available tools:
-- list_files
-- read_files
+${Object.keys(tools)
+  .map((toolName) => `- ${toolName}`)
+  .join("\n")}
 `;
 
         console.log(errorMessage);
 
         messages.push({
-          role: "assistant",
+          role: "tool",
           content: errorMessage,
         });
 
@@ -91,27 +91,47 @@ Available tools:
 
       try {
         // ----------------------------
-        // 5. EXECUTE TOOL
+        // 6. VALIDATE TOOL INPUT
         // ----------------------------
-        const result = await selectedTool(args);
+        const parsedArgs = selectedTool.schema.safeParse(args);
+
+        if (!parsedArgs.success) {
+          const validationError = parsedArgs.error.message;
+
+          throw new Error(
+            `Invalid arguments for "${tool}":\n${validationError}`,
+          );
+        }
+
+        // ----------------------------
+        // 7. EXECUTE TOOL
+        // ----------------------------
+        const result: ToolResult = await selectedTool.execute(parsedArgs.data);
 
         console.log("\nTOOL RESULT:\n");
         console.log(result);
 
         // ----------------------------
-        // 6. OBSERVATION HANDLING
+        // 8. OBSERVATION HANDLING
         // ----------------------------
         messages.push({
-          role: "assistant",
+          role: "tool",
           content: `
 OBSERVATION:
 Tool: ${tool}
 
-Result:
-${JSON.stringify(result, null, 2)}
+Success:
+${result.success}
+
+Output:
+${result.output}
+
+${result.error ? `Error:\n${result.error}` : ""}
 `,
         });
-      } catch (err: any) {
+
+        continue;
+      } catch (err) {
         const errorMessage = `
 TOOL ERROR:
 Tool: ${tool}
@@ -123,16 +143,16 @@ ${err instanceof Error ? err.message : "Unknown error"}
         console.log(errorMessage);
 
         messages.push({
-          role: "assistant",
+          role: "tool",
           content: errorMessage,
         });
-      }
 
-      continue;
+        continue;
+      }
     }
 
     // ----------------------------
-    // 7. INVALID FORMAT RECOVERY
+    // 9. INVALID FORMAT RECOVERY
     // ----------------------------
     const invalidFormatMessage = `
 INVALID RESPONSE FORMAT.
@@ -156,7 +176,7 @@ FINAL: your answer
     console.log(invalidFormatMessage);
 
     messages.push({
-      role: "assistant",
+      role: "system",
       content: invalidFormatMessage,
     });
   }

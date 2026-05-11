@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type Role = "system" | "user" | "assistant" | "tool";
 
 export interface Message {
@@ -7,11 +9,28 @@ export interface Message {
 
 export interface ToolCall {
   tool: string;
-  args: Record<string, any>;
+  args: unknown;
 }
 
 export interface AgentResponse {
   thought?: string;
   toolCall?: ToolCall;
   finalAnswer?: string;
+}
+
+export interface ToolResult {
+  success: boolean;
+  output: string;
+  error?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ToolDefinition<TArgs = unknown> {
+  name: string;
+
+  description: string;
+
+  schema: z.ZodType<TArgs>;
+
+  execute: (args: TArgs) => Promise<ToolResult>;
 }

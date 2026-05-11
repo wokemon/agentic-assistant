@@ -1,40 +1,89 @@
-export function parseAgentResponse(response: string) {
+import { z } from "zod";
+
+const toolCallSchema = z.object({
+  tool: z.string(),
+  args: z.record(z.string(), z.any()),
+});
+
+const agentResponseSchema = z.object({
+  toolCall: toolCallSchema.optional(),
+  finalAnswer: z.string().optional(),
+});
+
+export type AgentResponse = z.infer<typeof agentResponseSchema>;
+
+type ParseResult =
+  | {
+      success: true;
+      data: AgentResponse;
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
+export function parseAgentResponse(response: string): ParseResult {
   response = response.trim();
 
   // ----------------------------
-  // 1. TRY TOOL CALL (JSON mode)
+  // FINAL ANSWER MODE
   // ----------------------------
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
 
-      if (parsed.tool && parsed.args) {
-        return {
-          toolCall: {
-            tool: parsed.tool,
-            args: parsed.args,
-          },
-        };
-      }
-    }
-  } catch (e) {
-    // ignore JSON errors, fallback below
-  }
-
-  // ----------------------------
-  // 2. FINAL ANSWER MODE
-  // ----------------------------
   if (response.includes("FINAL:")) {
+    const finalAnswer = response.split("FINAL:")[1]?.trim();
+
+    const validated = agentResponseSchema.safeParse({
+      finalAnswer,
+    });
+
+    if (!validated.success) {
+      return {
+        success: false,
+        error: validated.error.message,
+      };
+    }
+
     return {
-      finalAnswer: response.split("FINAL:")[1].trim(),
+      success: true,
+      data: validated.data,
     };
   }
 
   // ----------------------------
-  // 3. FALLBACK (safe failure)
+  // TOOL CALL MODE
   // ----------------------------
-  return {
-    invalid: true,
-  };
+
+  try {
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+
+    if (!jsonMatch) {
+      return {
+        success: false,
+        error: "No JSON object found.",
+      };
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    const validated = toolCallSchema.safeParse(parsed);
+
+    if (!validated.success) {
+      return {
+        success: false,
+        error: validated.error.message,
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        toolCall: validated.data,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown parse error",
+    };
+  }
 }

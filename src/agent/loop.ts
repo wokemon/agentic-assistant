@@ -1,185 +1,106 @@
 import { parseAgentResponse } from "./parser";
 import { generateResponse } from "../llm/client";
 import { SYSTEM_PROMPT } from "./prompt";
-
 import { tools } from "../tools/registry";
-
-import { Message, ToolResult } from "./types";
+import { Message } from "./types";
 
 const MAX_ITERATIONS = 5;
 
-// Main agent loop
-export async function runAgent(userPrompt: string) {
-  const messages: Message[] = [
+export async function runAgent(userInput: string) {
+  const history: Message[] = [
     {
       role: "system",
       content: SYSTEM_PROMPT,
     },
     {
       role: "user",
-      content: userPrompt,
+      content: userInput,
     },
   ];
 
-  // Iterative agent loop
-  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    console.log(`\n========== ITERATION ${iteration + 1} ==========\n`);
+  let malformedCount = 0;
 
+  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     // ----------------------------
     // 1. GENERATE MODEL RESPONSE
     // ----------------------------
-    const response = await generateResponse(messages);
 
-    console.log("\nMODEL RESPONSE:\n");
-    console.log(response);
+    const rawResponse = await generateResponse(history);
 
-    messages.push({
+    history.push({
       role: "assistant",
-      content: response,
+      content: rawResponse,
     });
 
     // ----------------------------
     // 2. PARSE RESPONSE
     // ----------------------------
-    const parsed = parseAgentResponse(response);
+
+    const parsed = parseAgentResponse(rawResponse);
 
     // ----------------------------
-    // 3. FINAL ANSWER
+    // 3. HANDLE PARSE FAILURES
     // ----------------------------
-    if (parsed.finalAnswer) {
-      console.log("\nFINAL ANSWER:\n");
-      console.log(parsed.finalAnswer);
 
-      return;
+    if (!parsed.success) {
+      malformedCount++;
+
+      console.error("Parse error:", parsed.error);
+
+      history.push({
+        role: "system",
+        content: "Your previous response was invalid. Return valid JSON only.",
+      });
+
+      if (malformedCount >= 3) {
+        return "Agent stopped: too many malformed responses.";
+      }
+
+      continue;
+    }
+
+    const response = parsed.data;
+
+    // ----------------------------
+    // 4. FINAL ANSWER
+    // ----------------------------
+
+    if (response.finalAnswer) {
+      return response.finalAnswer;
     }
 
     // ----------------------------
-    // 4. TOOL CALL
+    // 5. TOOL EXECUTION
     // ----------------------------
-    if (parsed.toolCall) {
-      const { tool, args } = parsed.toolCall;
 
-      console.log("\nTOOL REQUEST:");
-      console.log(`Tool: ${tool}`);
-      console.log("Args:", args);
+    if (response.toolCall) {
+      const tool = tools[response.toolCall.tool];
 
-      const selectedTool = tools[tool];
-
-      // ----------------------------
-      // 5. UNKNOWN TOOL HANDLING
-      // ----------------------------
-      if (!selectedTool) {
-        const errorMessage = `
-TOOL ERROR:
-Unknown tool "${tool}"
-
-Available tools:
-${Object.keys(tools)
-  .map((toolName) => `- ${toolName}`)
-  .join("\n")}
-`;
-
-        console.log(errorMessage);
-
-        messages.push({
-          role: "tool",
-          content: errorMessage,
+      if (!tool) {
+        history.push({
+          role: "system",
+          content: `Tool "${response.toolCall.tool}" does not exist.`,
         });
 
         continue;
       }
 
       try {
-        // ----------------------------
-        // 6. VALIDATE TOOL INPUT
-        // ----------------------------
-        const parsedArgs = selectedTool.schema.safeParse(args);
+        const result = await tool.execute(response.toolCall.args);
 
-        if (!parsedArgs.success) {
-          const validationError = parsedArgs.error.message;
-
-          throw new Error(
-            `Invalid arguments for "${tool}":\n${validationError}`,
-          );
-        }
-
-        // ----------------------------
-        // 7. EXECUTE TOOL
-        // ----------------------------
-        const result: ToolResult = await selectedTool.execute(parsedArgs.data);
-
-        console.log("\nTOOL RESULT:\n");
-        console.log(result);
-
-        // ----------------------------
-        // 8. OBSERVATION HANDLING
-        // ----------------------------
-        messages.push({
-          role: "tool",
-          content: `
-OBSERVATION:
-Tool: ${tool}
-
-Success:
-${result.success}
-
-Output:
-${result.output}
-
-${result.error ? `Error:\n${result.error}` : ""}
-`,
+        history.push({
+          role: "system",
+          content: `Tool result:\n${JSON.stringify(result)}`,
         });
-
-        continue;
-      } catch (err) {
-        const errorMessage = `
-TOOL ERROR:
-Tool: ${tool}
-
-Message:
-${err instanceof Error ? err.message : "Unknown error"}
-`;
-
-        console.log(errorMessage);
-
-        messages.push({
-          role: "tool",
-          content: errorMessage,
+      } catch (error) {
+        history.push({
+          role: "system",
+          content:
+            error instanceof Error ? error.message : "Unknown tool error",
         });
-
-        continue;
       }
     }
-
-    // ----------------------------
-    // 9. INVALID FORMAT RECOVERY
-    // ----------------------------
-    const invalidFormatMessage = `
-INVALID RESPONSE FORMAT.
-
-You must respond in EXACTLY ONE of these formats.
-
-Tool call format:
-
-{
-  "tool": "tool_name",
-  "args": {
-    "key": "value"
-  }
-}
-
-Final answer format:
-
-FINAL: your answer
-`;
-
-    console.log(invalidFormatMessage);
-
-    messages.push({
-      role: "system",
-      content: invalidFormatMessage,
-    });
   }
 
-  console.log("\nAgent stopped: max iterations reached.");
+  return "Agent stopped: max iterations reached.";
 }

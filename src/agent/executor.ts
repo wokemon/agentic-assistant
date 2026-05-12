@@ -1,5 +1,7 @@
 import { tools } from "../tools/registry";
 
+const TOOL_TIMEOUT_MS = 10_000;
+
 export async function executeToolCall(toolName: string, rawArgs: unknown) {
   const tool = tools[toolName];
 
@@ -21,5 +23,23 @@ export async function executeToolCall(toolName: string, rawArgs: unknown) {
     };
   }
 
-  return tool.execute(parsed.data);
+  try {
+    const result = await Promise.race([
+      tool.execute(parsed.data),
+
+      new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          reject(new Error("Tool execution timed out"));
+        }, TOOL_TIMEOUT_MS),
+      ),
+    ]);
+
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      output: "",
+      error: error instanceof Error ? error.message : "Unknown execution error",
+    };
+  }
 }

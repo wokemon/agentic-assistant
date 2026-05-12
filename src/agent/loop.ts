@@ -6,9 +6,9 @@ import { Message } from "./types";
 import { LoopGuard } from "../safety/loopGuards";
 
 const MAX_ITERATIONS = 5;
-const loopGuard = new LoopGuard();
 
 export async function runAgent(userInput: string) {
+  const loopGuard = new LoopGuard();
   const history: Message[] = [
     {
       role: "system",

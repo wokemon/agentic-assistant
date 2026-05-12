@@ -4,7 +4,7 @@ import { z } from "zod";
 import { ToolDefinition } from "../types";
 
 const schema = z.object({
-  path: z.string().default("."),
+  path: z.string().min(1),
 });
 
 type ListFilesArgs = z.infer<typeof schema>;

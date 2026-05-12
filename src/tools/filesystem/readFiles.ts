@@ -4,7 +4,9 @@ import { z } from "zod";
 import { ToolDefinition } from "../types";
 
 const schema = z.object({
-  paths: z.array(z.string()),
+  paths: z
+    .array(z.string().min(1))
+    .nonempty("At least one file path must be provided"),
 
   preview: z.boolean().optional(),
 });

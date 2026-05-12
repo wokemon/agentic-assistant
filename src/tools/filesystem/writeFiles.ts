@@ -5,12 +5,14 @@ import { z } from "zod";
 import { ToolDefinition } from "../types";
 
 const schema = z.object({
-  files: z.array(
-    z.object({
-      path: z.string(),
-      content: z.string(),
-    }),
-  ),
+  files: z
+    .array(
+      z.object({
+        path: z.string().min(1),
+        content: z.string(),
+      }),
+    )
+    .nonempty(),
 });
 
 type WriteFilesArgs = z.infer<typeof schema>;

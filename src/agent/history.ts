@@ -1,4 +1,4 @@
-import { Message } from "./types";
+import { Message } from "../shared/types";
 
 export class MessageHistory {
   private messages: Message[] = [];

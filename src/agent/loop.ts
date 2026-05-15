@@ -4,7 +4,7 @@ import { parseAgentResponse } from "./parser";
 import { generateResponse } from "../llm/client";
 import { SYSTEM_PROMPT } from "./prompt";
 import { tools } from "../tools/registry";
-import { Message } from "./types";
+import { Message } from "../shared/types";
 import { LoopGuard } from "../safety/loopGuards";
 import { logger } from "../shared/logger";
 

@@ -1,7 +1,6 @@
 import fs from "fs/promises";
 import { z } from "zod";
-
-import { ToolDefinition } from "../types";
+import { ToolDefinition } from "../../shared/types";
 import { logger } from "../../shared/logger";
 
 const schema = z.object({

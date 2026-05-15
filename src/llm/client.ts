@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import dotenv from "dotenv";
 
 import { logger } from "../shared/logger";
-import { Message } from "../agent/types";
+import { Message } from "../shared/types";
 
 dotenv.config();
 

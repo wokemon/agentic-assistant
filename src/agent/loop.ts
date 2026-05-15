@@ -1,14 +1,32 @@
+import crypto from "crypto";
+
 import { parseAgentResponse } from "./parser";
 import { generateResponse } from "../llm/client";
 import { SYSTEM_PROMPT } from "./prompt";
 import { tools } from "../tools/registry";
 import { Message } from "./types";
 import { LoopGuard } from "../safety/loopGuards";
+import { logger } from "../shared/logger";
 
 const MAX_ITERATIONS = 5;
 
 export async function runAgent(userInput: string) {
+  const sessionId = crypto.randomUUID();
+
+  const agentLogger = logger.child({
+    component: "agent_loop",
+    sessionId,
+  });
+
+  agentLogger.info(
+    {
+      userInput,
+    },
+    "Starting agent run",
+  );
+
   const loopGuard = new LoopGuard();
+
   const history: Message[] = [
     {
       role: "system",
@@ -23,11 +41,26 @@ export async function runAgent(userInput: string) {
   let malformedCount = 0;
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    agentLogger.info(
+      {
+        iteration,
+        historyLength: history.length,
+      },
+      "Starting loop iteration",
+    );
+
     // ----------------------------
     // 1. GENERATE MODEL RESPONSE
     // ----------------------------
 
     const rawResponse = await generateResponse(history);
+
+    agentLogger.debug(
+      {
+        rawResponse,
+      },
+      "Received model response",
+    );
 
     history.push({
       role: "assistant",
@@ -47,7 +80,13 @@ export async function runAgent(userInput: string) {
     if (!parsed.success) {
       malformedCount++;
 
-      console.error("Parse error:", parsed.error);
+      agentLogger.warn(
+        {
+          malformedCount,
+          error: parsed.error,
+        },
+        "Failed to parse model response",
+      );
 
       history.push({
         role: "system",
@@ -55,6 +94,13 @@ export async function runAgent(userInput: string) {
       });
 
       if (malformedCount >= 3) {
+        agentLogger.error(
+          {
+            malformedCount,
+          },
+          "Agent stopped due to repeated malformed responses",
+        );
+
         return "Agent stopped: too many malformed responses.";
       }
 
@@ -68,6 +114,13 @@ export async function runAgent(userInput: string) {
     // ----------------------------
 
     if (response.finalAnswer) {
+      agentLogger.info(
+        {
+          finalAnswer: response.finalAnswer,
+        },
+        "Agent produced final answer",
+      );
+
       return response.finalAnswer;
     }
 
@@ -78,6 +131,14 @@ export async function runAgent(userInput: string) {
     if (response.toolCall) {
       const { tool: toolName, args } = response.toolCall;
 
+      agentLogger.info(
+        {
+          tool: toolName,
+          args,
+        },
+        "Model requested tool execution",
+      );
+
       const tool = tools[toolName];
 
       // ----------------------------
@@ -85,6 +146,13 @@ export async function runAgent(userInput: string) {
       // ----------------------------
 
       if (!tool) {
+        agentLogger.warn(
+          {
+            tool: toolName,
+          },
+          "Model requested unknown tool",
+        );
+
         history.push({
           role: "system",
           content: `Tool "${toolName}" does not exist.`,
@@ -98,6 +166,14 @@ export async function runAgent(userInput: string) {
       // ----------------------------
 
       if (loopGuard.isRepeating(toolName, args)) {
+        agentLogger.warn(
+          {
+            tool: toolName,
+            args,
+          },
+          "Loop guard triggered due to repeated tool call",
+        );
+
         return `Agent stopped: repeating tool call detected (${toolName}).`;
       }
 
@@ -108,13 +184,34 @@ export async function runAgent(userInput: string) {
       // ----------------------------
 
       try {
+        const start = performance.now();
+
         const result = await tool.execute(args);
+
+        const durationMs = performance.now() - start;
+
+        agentLogger.info(
+          {
+            tool: toolName,
+            durationMs,
+            success: result.success,
+          },
+          "Tool execution completed",
+        );
 
         history.push({
           role: "system",
           content: `Tool result:\n${JSON.stringify(result)}`,
         });
       } catch (error) {
+        agentLogger.error(
+          {
+            tool: toolName,
+            error,
+          },
+          "Tool execution failed",
+        );
+
         history.push({
           role: "system",
           content:
@@ -123,6 +220,13 @@ export async function runAgent(userInput: string) {
       }
     }
   }
+
+  agentLogger.warn(
+    {
+      maxIterations: MAX_ITERATIONS,
+    },
+    "Agent stopped due to max iterations",
+  );
 
   return "Agent stopped: max iterations reached.";
 }

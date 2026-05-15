@@ -3,6 +3,7 @@ import path from "path";
 import { z } from "zod";
 
 import { ToolDefinition } from "../types";
+import { logger } from "../../shared/logger";
 
 const schema = z.object({
   files: z
@@ -25,12 +26,28 @@ export const writeFilesTool: ToolDefinition<WriteFilesArgs> = {
   schema,
 
   async execute(args) {
+    logger.info(
+      {
+        tool: "write_files",
+        fileCount: args.files.length,
+      },
+      "Executing write_files tool",
+    );
+
     try {
       const projectRoot = process.cwd();
 
       await Promise.all(
         args.files.map(async (file) => {
           const resolvedPath = path.resolve(projectRoot, file.path);
+
+          logger.debug(
+            {
+              originalPath: file.path,
+              resolvedPath,
+            },
+            "Validating file path",
+          );
 
           if (!resolvedPath.startsWith(projectRoot)) {
             throw new Error(`Invalid path: ${file.path}`);
@@ -41,7 +58,22 @@ export const writeFilesTool: ToolDefinition<WriteFilesArgs> = {
           });
 
           await fs.writeFile(resolvedPath, file.content, "utf-8");
+
+          logger.debug(
+            {
+              path: resolvedPath,
+            },
+            "File written successfully",
+          );
         }),
+      );
+
+      logger.info(
+        {
+          tool: "write_files",
+          fileCount: args.files.length,
+        },
+        "Successfully wrote files",
       );
 
       return {
@@ -49,6 +81,14 @@ export const writeFilesTool: ToolDefinition<WriteFilesArgs> = {
         output: `Successfully wrote ${args.files.length} file(s)`,
       };
     } catch (error) {
+      logger.error(
+        {
+          tool: "write_files",
+          error,
+        },
+        "Failed to write files",
+      );
+
       return {
         success: false,
         output: "",

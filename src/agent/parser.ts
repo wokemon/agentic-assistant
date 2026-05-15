@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { logger } from "../shared/logger";
+
 const toolCallSchema = z.object({
   tool: z.string(),
   args: z.record(z.string(), z.any()),
@@ -23,6 +25,13 @@ type ParseResult =
     };
 
 export function parseAgentResponse(response: string): ParseResult {
+  logger.debug(
+    {
+      rawResponse: response,
+    },
+    "Parsing agent response",
+  );
+
   response = response.trim();
 
   // ----------------------------
@@ -30,6 +39,8 @@ export function parseAgentResponse(response: string): ParseResult {
   // ----------------------------
 
   if (response.includes("FINAL:")) {
+    logger.debug("Detected final answer response");
+
     const finalAnswer = response.split("FINAL:")[1]?.trim();
 
     const validated = agentResponseSchema.safeParse({
@@ -37,11 +48,20 @@ export function parseAgentResponse(response: string): ParseResult {
     });
 
     if (!validated.success) {
+      logger.warn(
+        {
+          issues: validated.error.issues,
+        },
+        "Final answer validation failed",
+      );
+
       return {
         success: false,
         error: validated.error.message,
       };
     }
+
+    logger.info("Final answer parsed successfully");
 
     return {
       success: true,
@@ -54,9 +74,18 @@ export function parseAgentResponse(response: string): ParseResult {
   // ----------------------------
 
   try {
+    logger.debug("Attempting tool call parsing");
+
     const jsonMatch = response.match(/\{[\s\S]*\}/);
 
     if (!jsonMatch) {
+      logger.warn(
+        {
+          response,
+        },
+        "No JSON object found in response",
+      );
+
       return {
         success: false,
         error: "No JSON object found.",
@@ -65,14 +94,36 @@ export function parseAgentResponse(response: string): ParseResult {
 
     const parsed = JSON.parse(jsonMatch[0]);
 
+    logger.debug(
+      {
+        parsed,
+      },
+      "Tool call JSON parsed",
+    );
+
     const validated = toolCallSchema.safeParse(parsed);
 
     if (!validated.success) {
+      logger.warn(
+        {
+          parsed,
+          issues: validated.error.issues,
+        },
+        "Tool call validation failed",
+      );
+
       return {
         success: false,
         error: validated.error.message,
       };
     }
+
+    logger.info(
+      {
+        tool: validated.data.tool,
+      },
+      "Tool call parsed successfully",
+    );
 
     return {
       success: true,
@@ -81,6 +132,14 @@ export function parseAgentResponse(response: string): ParseResult {
       },
     };
   } catch (error) {
+    logger.error(
+      {
+        error,
+        response,
+      },
+      "Agent response parsing failed",
+    );
+
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown parse error",

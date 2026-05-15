@@ -2,12 +2,20 @@ import OpenAI from "openai";
 import dotenv from "dotenv";
 
 import { logger } from "../shared/logger";
+import { Message } from "../agent/types";
 
 dotenv.config();
 
 const apiKey = process.env.OPENAI_API_KEY;
 const baseURL = process.env.OPENAI_BASE_URL;
 const model = process.env.MODEL || "qwen/qwen3-coder:free";
+
+type OpenAIRole = "system" | "user" | "assistant";
+
+type OpenAIMessage = {
+  role: OpenAIRole;
+  content: string;
+};
 
 if (!apiKey) {
   throw new Error("OPENAI_API_KEY is missing");
@@ -22,10 +30,18 @@ const client = new OpenAI({
   },
 });
 
-export type Message = {
-  role: "system" | "user" | "assistant";
-  content: string;
-};
+function isOpenAIMessage(message: Message): message is OpenAIMessage {
+  return message.role !== "tool";
+}
+
+function toOpenAIMessages(
+  messages: Message[],
+): OpenAI.Chat.ChatCompletionMessageParam[] {
+  return messages.filter(isOpenAIMessage).map((message) => ({
+    role: message.role,
+    content: message.content,
+  }));
+}
 
 export async function generateResponse(messages: Message[]): Promise<string> {
   const startTime = Date.now();
@@ -41,7 +57,7 @@ export async function generateResponse(messages: Message[]): Promise<string> {
   try {
     const response = await client.chat.completions.create({
       model,
-      messages,
+      messages: toOpenAIMessages(messages),
       temperature: 0,
     });
 

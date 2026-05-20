@@ -6,7 +6,7 @@ import { runAgent } from "../../src/agent/loop";
 
 import { generateResponse } from "../../src/llm/client";
 import { parseAgentResponse } from "../../src/agent/parser";
-import { tools } from "../../src/tools/registry";
+import { executeToolCall } from "../../src/agent/executor";
 
 // ----------------------------
 // MOCK MODULES
@@ -20,12 +20,8 @@ vi.mock("../../src/agent/parser", () => ({
   parseAgentResponse: vi.fn(),
 }));
 
-vi.mock("../../src/tools/registry", () => ({
-  tools: {
-    read_file: {
-      execute: vi.fn(),
-    },
-  },
+vi.mock("../../src/agent/executor", () => ({
+  executeToolCall: vi.fn(),
 }));
 
 describe("runAgent", () => {
@@ -66,9 +62,9 @@ describe("runAgent", () => {
         success: true,
         data: {
           toolCall: {
-            tool: "read_file",
+            tool: "read_files",
             args: {
-              path: "app.ts",
+              paths: ["app.ts"],
             },
           },
         },
@@ -80,14 +76,16 @@ describe("runAgent", () => {
         },
       });
 
-    vi.mocked(tools.read_file.execute).mockResolvedValue({
+    vi.mocked(executeToolCall).mockResolvedValue({
       success: true,
       output: "file content",
     });
 
     const result = await runAgent("fix app");
 
-    expect(tools.read_file.execute).toHaveBeenCalled();
+    expect(executeToolCall).toHaveBeenCalledWith("read_files", {
+      paths: ["app.ts"],
+    });
 
     expect(result).toBe("Done");
   });
@@ -154,9 +152,9 @@ describe("runAgent", () => {
         success: true,
         data: {
           toolCall: {
-            tool: "read_file",
+            tool: "read_files",
             args: {
-              path: "missing.ts",
+              paths: ["missing.ts"],
             },
           },
         },
@@ -168,9 +166,11 @@ describe("runAgent", () => {
         },
       });
 
-    vi.mocked(tools.read_file.execute).mockRejectedValue(
-      new Error("File not found"),
-    );
+    vi.mocked(executeToolCall).mockResolvedValue({
+      success: false,
+      output: "",
+      error: "File not found",
+    });
 
     const result = await runAgent("test");
 
@@ -188,8 +188,8 @@ describe("runAgent", () => {
         success: true,
         data: {
           toolCall: {
-            tool: "read_file",
-            args: { path: "1.ts" },
+            tool: "read_files",
+            args: { paths: ["1.ts"] },
           },
         },
       })
@@ -197,8 +197,8 @@ describe("runAgent", () => {
         success: true,
         data: {
           toolCall: {
-            tool: "read_file",
-            args: { path: "2.ts" },
+            tool: "read_files",
+            args: { paths: ["2.ts"] },
           },
         },
       })
@@ -206,8 +206,8 @@ describe("runAgent", () => {
         success: true,
         data: {
           toolCall: {
-            tool: "read_file",
-            args: { path: "3.ts" },
+            tool: "read_files",
+            args: { paths: ["3.ts"] },
           },
         },
       })
@@ -215,8 +215,8 @@ describe("runAgent", () => {
         success: true,
         data: {
           toolCall: {
-            tool: "read_file",
-            args: { path: "4.ts" },
+            tool: "read_files",
+            args: { paths: ["4.ts"] },
           },
         },
       })
@@ -224,13 +224,13 @@ describe("runAgent", () => {
         success: true,
         data: {
           toolCall: {
-            tool: "read_file",
-            args: { path: "5.ts" },
+            tool: "read_files",
+            args: { paths: ["5.ts"] },
           },
         },
       });
 
-    vi.mocked(tools.read_file.execute).mockResolvedValue({
+    vi.mocked(executeToolCall).mockResolvedValue({
       success: true,
       output: "content",
     });

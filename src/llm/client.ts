@@ -18,12 +18,16 @@ type OpenAIMessage = {
 };
 
 if (!apiKey) {
-  throw new Error("OPENAI_API_KEY is missing");
+  throw new Error("OPENAI_API_KEY environment variable is not set");
+}
+
+if (!baseURL) {
+  logger.warn("OPENAI_BASE_URL not set, using default OpenAI endpoint");
 }
 
 const client = new OpenAI({
   apiKey,
-  baseURL,
+  baseURL: baseURL || undefined,
 
   defaultHeaders: {
     "HTTP-Referer": "http://localhost:3000",

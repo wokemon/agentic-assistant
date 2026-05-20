@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "vitest",
-    "dev": "tsx src/index.ts"
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "test": "vitest"
   },
   "keywords": [],
   "author": "",

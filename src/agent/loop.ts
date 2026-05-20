@@ -7,6 +7,7 @@ import { tools } from "../tools/registry";
 import { Message } from "../shared/types";
 import { LoopGuard } from "../safety/loopGuards";
 import { logger } from "../shared/logger";
+import { executeToolCall } from "./executor";
 
 const MAX_ITERATIONS = 5;
 
@@ -139,13 +140,11 @@ export async function runAgent(userInput: string) {
         "Model requested tool execution",
       );
 
-      const tool = tools[toolName];
-
       // ----------------------------
       // TOOL EXISTS?
       // ----------------------------
 
-      if (!tool) {
+      if (!tools[toolName]) {
         agentLogger.warn(
           {
             tool: toolName,
@@ -183,41 +182,12 @@ export async function runAgent(userInput: string) {
       // EXECUTE TOOL
       // ----------------------------
 
-      try {
-        const start = performance.now();
+      const result = await executeToolCall(toolName, args);
 
-        const result = await tool.execute(args);
-
-        const durationMs = performance.now() - start;
-
-        agentLogger.info(
-          {
-            tool: toolName,
-            durationMs,
-            success: result.success,
-          },
-          "Tool execution completed",
-        );
-
-        history.push({
-          role: "system",
-          content: `Tool result:\n${JSON.stringify(result)}`,
-        });
-      } catch (error) {
-        agentLogger.error(
-          {
-            tool: toolName,
-            error,
-          },
-          "Tool execution failed",
-        );
-
-        history.push({
-          role: "system",
-          content:
-            error instanceof Error ? error.message : "Unknown tool error",
-        });
-      }
+      history.push({
+        role: "system",
+        content: `Tool result:\n${JSON.stringify(result)}`,
+      });
     }
   }
 

@@ -228,6 +228,51 @@ describe("runAgent", () => {
             args: { paths: ["5.ts"] },
           },
         },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        data: {
+          toolCall: {
+            tool: "read_files",
+            args: { paths: ["6.ts"] },
+          },
+        },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        data: {
+          toolCall: {
+            tool: "read_files",
+            args: { paths: ["7.ts"] },
+          },
+        },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        data: {
+          toolCall: {
+            tool: "read_files",
+            args: { paths: ["8.ts"] },
+          },
+        },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        data: {
+          toolCall: {
+            tool: "read_files",
+            args: { paths: ["9.ts"] },
+          },
+        },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        data: {
+          toolCall: {
+            tool: "read_files",
+            args: { paths: ["10.ts"] },
+          },
+        },
       });
 
     vi.mocked(executeToolCall).mockResolvedValue({

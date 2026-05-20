@@ -9,7 +9,7 @@ import { LoopGuard } from "../safety/loopGuards";
 import { logger } from "../shared/logger";
 import { executeToolCall } from "./executor";
 
-const MAX_ITERATIONS = 5;
+const MAX_ITERATIONS = 10;
 
 export async function runAgent(userInput: string) {
   const sessionId = crypto.randomUUID();

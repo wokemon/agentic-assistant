@@ -6,6 +6,7 @@ import { logger } from "../../shared/logger";
 
 const execAsync = promisify(exec);
 
+// 1. Define schema strictly at the top
 const schema = z.object({
   command: z.string().min(1, "Command cannot be empty string"),
   cwd: z.string().optional(),
@@ -14,6 +15,7 @@ const schema = z.object({
 
 type TerminalExecuteArgs = z.infer<typeof schema>;
 
+// 2. Export the highly cohesive ToolDefinition object
 export const terminalTool: ToolDefinition<TerminalExecuteArgs> = {
   name: "terminal_execute",
 
@@ -22,6 +24,7 @@ export const terminalTool: ToolDefinition<TerminalExecuteArgs> = {
 
   schema,
 
+  // 3. Inline execution assuming the executor.ts handles validation
   async execute(args) {
     logger.info(
       {
@@ -34,7 +37,7 @@ export const terminalTool: ToolDefinition<TerminalExecuteArgs> = {
 
     try {
       // Defensive Engineering: Prevent infinite hangs and buffer overloads
-      const { stdout, stderr } = await execAsync(args.command, {
+      const { stdout } = await execAsync(args.command, {
         cwd: args.cwd,
         timeout: args.timeoutMs ?? 30000,
         maxBuffer: 1024 * 1024 * 5, // 5MB limit to prevent memory crashes
@@ -51,7 +54,6 @@ export const terminalTool: ToolDefinition<TerminalExecuteArgs> = {
       return {
         success: true,
         output: stdout.trim(),
-        stderr: stderr.trim(),
       };
     } catch (error: any) {
       logger.error(
@@ -63,11 +65,13 @@ export const terminalTool: ToolDefinition<TerminalExecuteArgs> = {
         "Failed to execute command",
       );
 
+      const exitCode = error.code || 1;
+
       return {
         success: false,
         output: error.stdout?.trim() || "",
-        error: error.stderr?.trim() || error.message || "Unknown error",
-        code: error.code || 1,
+        // Surface the exit code inside the standard error string for the LLM
+        error: `Exit code ${exitCode}: ${error.stderr?.trim() || error.message || "Unknown error"}`,
       };
     }
   },

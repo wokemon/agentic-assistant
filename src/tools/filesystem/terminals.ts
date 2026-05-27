@@ -1,68 +1,74 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 import { z } from "zod";
+import { ToolDefinition } from "../../shared/types";
 import { logger } from "../../shared/logger";
 
 const execAsync = promisify(exec);
 
-// 1. Enforce strict schema validation
-export const TerminalExecuteSchema = z.object({
+const schema = z.object({
   command: z.string().min(1, "Command cannot be empty string"),
   cwd: z.string().optional(),
   timeoutMs: z.number().max(60000).default(30000).optional(),
 });
 
-export type TerminalExecuteInput = z.infer<typeof TerminalExecuteSchema>;
+type TerminalExecuteArgs = z.infer<typeof schema>;
 
-export interface TerminalResult {
-  success: boolean;
-  stdout: string;
-  stderr: string;
-  code?: number | null;
-}
+export const terminalTool: ToolDefinition<TerminalExecuteArgs> = {
+  name: "terminal_execute",
 
-// 2. Separate orchestration from execution
-export async function executeTerminalCommand(
-  input: unknown,
-): Promise<TerminalResult> {
-  const parsed = TerminalExecuteSchema.safeParse(input);
+  description:
+    "Executes a command in the host terminal. Use this to check environment info, manage dependencies, or run scripts. Caution: Windows environments require dir instead of ls.",
 
-  if (!parsed.success) {
-    // Log a single object to match logger.error overloads
-    logger.error({
-      message: "Terminal execution validation failed",
-      errors: parsed.error.format(),
-    });
-    throw new Error(`Invalid terminal payload: ${parsed.error.message}`);
-  }
+  schema,
 
-  const { command, cwd, timeoutMs } = parsed.data;
+  async execute(args) {
+    logger.info(
+      {
+        tool: "terminal_execute",
+        command: args.command,
+        cwd: args.cwd,
+      },
+      "Executing terminal command",
+    );
 
-  try {
-    logger.info(`Executing command: ${command}`);
+    try {
+      // Defensive Engineering: Prevent infinite hangs and buffer overloads
+      const { stdout, stderr } = await execAsync(args.command, {
+        cwd: args.cwd,
+        timeout: args.timeoutMs ?? 30000,
+        maxBuffer: 1024 * 1024 * 5, // 5MB limit to prevent memory crashes
+      });
 
-    // Defensive Engineering: Prevent infinite hangs and buffer overloads
-    const { stdout, stderr } = await execAsync(command, {
-      cwd,
-      timeout: timeoutMs,
-      maxBuffer: 1024 * 1024 * 5, // 5MB limit to prevent memory crashes
-    });
+      logger.info(
+        {
+          tool: "terminal_execute",
+          command: args.command,
+        },
+        "Successfully executed command",
+      );
 
-    return {
-      success: true,
-      stdout: stdout.trim(),
-      stderr: stderr.trim(),
-    };
-  } catch (error: any) {
-    logger.warn({
-      message: `Command failed: ${command}`,
-      error: error.message,
-    });
-    return {
-      success: false,
-      stdout: error.stdout?.trim() || "",
-      stderr: error.stderr?.trim() || error.message,
-      code: error.code || 1,
-    };
-  }
-}
+      return {
+        success: true,
+        output: stdout.trim(),
+        stderr: stderr.trim(),
+      };
+    } catch (error: any) {
+      logger.error(
+        {
+          tool: "terminal_execute",
+          command: args.command,
+          error,
+        },
+        "Failed to execute command",
+      );
+
+      return {
+        success: false,
+        output: error.stdout?.trim() || "",
+        error: error.stderr?.trim() || error.message || "Unknown error",
+        code: error.code || 1,
+      };
+    }
+  },
+};

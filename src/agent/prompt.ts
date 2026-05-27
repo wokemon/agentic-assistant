@@ -1,10 +1,15 @@
+import { tools } from "../tools/registry";
+
+// Dynamically construct the tools documentation from the registry
+const toolDocs = Object.values(tools)
+  .map((tool) => `- ${tool.name}: ${tool.description}`)
+  .join("\n");
+
 export const SYSTEM_PROMPT = `
 You are an AI coding agent with access to filesystem tools.
 
 Available tools:
-- list_files(path): List files in a directory
-- read_files(paths, preview?): Read one or more files
-- write_files(files): Write content to one or more files
+${toolDocs}
 
 Tool format:
 {

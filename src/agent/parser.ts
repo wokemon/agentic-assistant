@@ -1,5 +1,4 @@
 import { z } from "zod";
-
 import { logger } from "../shared/logger";
 
 const toolCallSchema = z.object({
@@ -38,10 +37,15 @@ export function parseAgentResponse(response: string): ParseResult {
   // FINAL ANSWER MODE
   // ----------------------------
 
-  if (response.includes("FINAL:")) {
+  // Defensive Engineering: Strict regex anchored to the start of a line (^).
+  // The 'm' flag ensures it checks the start of every line, not just the very first character.
+  // [\s\S]* safely captures all remaining characters, including multi-line outputs.
+  const finalMatch = response.match(/^FINAL:\s*([\s\S]*)/m);
+
+  if (finalMatch) {
     logger.debug("Detected final answer response");
 
-    const finalAnswer = response.split("FINAL:")[1]?.trim();
+    const finalAnswer = finalMatch[1]?.trim();
 
     const validated = agentResponseSchema.safeParse({
       finalAnswer,

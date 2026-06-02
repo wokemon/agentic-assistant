@@ -4,9 +4,14 @@ import { logger } from "../shared/logger";
 const TOOL_TIMEOUT_MS = 10_000;
 
 // Phase 4: Defensive Context Management Thresholds
-// Note: Keeping as characters for the MVP to avoid tokenizer overhead,
-// but structured for an easy swap to MAX_OUTPUT_TOKENS later.
+// Note: Keeping as characters for the MVP to avoid tokenizer overhead.
 const MAX_OUTPUT_LENGTH = 2000;
+
+export interface ToolResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
 
 // 1. Standard Head-and-Tail Truncation (Fallback)
 function truncateOutput(text: string | undefined, toolName: string): string {
@@ -31,7 +36,7 @@ function truncateOutput(text: string | undefined, toolName: string): string {
   return `${topHalf}\n\n... [OUTPUT TRUNCATED: ${omittedLength} characters omitted] ...\n\n${bottomHalf}`;
 }
 
-// 2. Tool-Specific Summarization Layer
+// 2. Specialized Summarization Layer
 function summarizeFileList(text: string | undefined): string {
   if (!text) return "";
 
@@ -39,6 +44,7 @@ function summarizeFileList(text: string | undefined): string {
     .split("\n")
     .map((f) => f.trim())
     .filter(Boolean);
+
   if (files.length <= 20) return text;
 
   const sample = files
@@ -50,10 +56,11 @@ function summarizeFileList(text: string | undefined): string {
   return `Found ${files.length} items.\n\nExamples:\n${sample}\n\n... [${omitted} more items omitted]`;
 }
 
-// 3. Normalization Router
+// 3. Centralized Normalization Router
 function normalizeOutput(text: string | undefined, toolName: string): string {
   if (!text) return "";
 
+  // Hardcoded routing is perfectly acceptable for the MVP toolset
   if (toolName === "list_files" || toolName === "search_files") {
     return summarizeFileList(text);
   }
@@ -61,7 +68,10 @@ function normalizeOutput(text: string | undefined, toolName: string): string {
   return truncateOutput(text, toolName);
 }
 
-export async function executeToolCall(toolName: string, rawArgs: unknown) {
+export async function executeToolCall(
+  toolName: string,
+  rawArgs: unknown,
+): Promise<ToolResult> {
   const tool = tools[toolName];
 
   logger.info({ tool: toolName, args: rawArgs }, "Tool execution requested");
@@ -86,20 +96,22 @@ export async function executeToolCall(toolName: string, rawArgs: unknown) {
   try {
     logger.info({ tool: toolName }, "Executing tool");
 
-    const result = await Promise.race([
+    // NOTE: This timeout only affects the agent's waiting period.
+    // It does NOT cancel the underlying process (e.g., child processes, network requests).
+    const result = (await Promise.race([
       tool.execute(parsed.data),
       new Promise<never>((_, reject) =>
         setTimeout(() => {
           reject(new Error("Tool execution timed out"));
         }, TOOL_TIMEOUT_MS),
       ),
-    ]);
+    ])) as ToolResult;
 
     const duration = Date.now() - startTime;
 
-    // APPLY IMMUTABLE NORMALIZATION
-    const normalizedResult = {
-      ...result,
+    // Apply centralized, immutable normalization
+    const normalizedResult: ToolResult = {
+      success: result.success,
       output: normalizeOutput(result.output, toolName),
       error: truncateOutput(result.error, toolName),
     };

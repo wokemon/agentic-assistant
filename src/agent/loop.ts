@@ -34,28 +34,56 @@ export async function runAgent(userInput: string) {
       "Starting loop iteration",
     );
 
-    // 3. Pass the managed context, NOT the raw history array
-    const rawResponse = await generateResponse(context);
+    let rawResponse: string;
 
-    // Add the assistant's response to the sliding window
-    history.add("assistant", rawResponse);
+    // 3. P0-2: Context Budget Enforcement
+    try {
+      rawResponse = await generateResponse(context);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === "ContextBudgetExceededError"
+      ) {
+        agentLogger.error("Agent stopped: Context budget exceeded.");
+        return "Agent stopped: Context budget exceeded. Please refine your request or clear memory.";
+      }
+      throw error; // Re-throw unknown errors
+    }
 
     const parsed = parseAgentResponse(rawResponse);
 
     if (!parsed.success) {
       malformedCount++;
+      agentLogger.warn(
+        { malformedCount, error: parsed.error },
+        "Malformed response",
+      );
+
+      // Architectural Fix: Do not store garbage rawResponse in 'assistant' role.
+      // Just inject the system warning to guide the next iteration.
       history.add(
         "system",
-        "Your previous response was invalid. Return valid JSON only.",
+        `Your previous response was invalid (${parsed.error}). Return valid JSON only.`,
       );
-      if (malformedCount >= 3)
+
+      if (malformedCount >= 3) {
+        agentLogger.error("Agent stopped due to repeated malformed responses.");
         return "Agent stopped: too many malformed responses.";
+      }
       continue;
     }
+
+    // Architectural Fix: Only store valid responses in history
+    history.add("assistant", rawResponse);
 
     const response = parsed.data;
 
     if (response.finalAnswer) {
+      // P1-3: Missing Final Logging
+      agentLogger.info(
+        { iterations: iteration + 1, finalAnswer: response.finalAnswer },
+        "Agent completed successfully",
+      );
       return response.finalAnswer;
     }
 
@@ -68,22 +96,32 @@ export async function runAgent(userInput: string) {
       }
 
       if (loopGuard.isRepeating(toolName, args)) {
+        agentLogger.warn({ tool: toolName, args }, "Loop guard triggered");
         return `Agent stopped: repeating tool call detected (${toolName}).`;
       }
       loopGuard.addAction(toolName, args);
 
-      // Example of populating Working Memory passively:
-      // If the agent opens a file, track it automatically so it doesn't have to guess later.
+      // Populate Working Memory passively:
       if (toolName === "read_file_lines" || toolName === "read_files") {
         memory.addOpenedFile(args.path || args.paths?.[0]);
       }
 
       const result = await executeToolCall(toolName, args);
 
-      // 4. Add the raw result to the sliding window (which will prune old ones)
-      history.add("system", `Tool result:\n${JSON.stringify(result)}`);
+      // P0-1: Explicitly structure the output to avoid arbitrary object JSON bloat.
+      // We rely entirely on the executor's truncation logic here.
+      const formattedResult = result.success
+        ? `Success:\n${result.output}`
+        : `Error:\n${result.error}`;
+
+      history.add("system", `Tool result:\n${formattedResult}`);
     }
   }
 
+  // P1-3: Missing Final Logging
+  agentLogger.info(
+    { iterations: MAX_ITERATIONS },
+    "Agent stopped due to max iterations",
+  );
   return "Agent stopped: max iterations reached.";
 }

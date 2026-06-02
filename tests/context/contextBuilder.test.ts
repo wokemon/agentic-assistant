@@ -1,89 +1,102 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildContext } from "../../src/context/contextBuilder";
-import { WorkingMemory } from "../../src/context/workingMemory";
-import { MessageHistory } from "../../src/agent/history";
+import { describe, it, expect, vi } from "vitest";
+import {
+  buildContext,
+  ContextBudgetExceededError,
+} from "../../src/context/contextBuilder";
 import { Message } from "../../src/shared/types";
 
-// 1. Mock the static system prompt to ensure tests don't break if you change the base rules
+// 1. Mock the System Prompt to guarantee determinism
 vi.mock("../../src/agent/prompt", () => ({
-  SYSTEM_PROMPT: "MOCK_BASE_SYSTEM_PROMPT",
+  SYSTEM_PROMPT: "You are a test agent.",
 }));
 
 describe("ContextBuilder Validation Suite", () => {
-  let mockMemory: Partial<WorkingMemory>;
-  let mockHistory: Partial<MessageHistory>;
+  // Define the shape explicitly so TypeScript knows these are string arrays
+  type MockMemoryState = {
+    facts: string[];
+    openedFiles: string[];
+    summaries: string[];
+  };
 
-  beforeEach(() => {
-    // 2. Reinitialize clean mocks before every test
-    mockMemory = {
-      getState: vi.fn().mockReturnValue({
-        facts: [],
-        openedFiles: [],
-        summaries: [],
-      }),
-    };
+  // Helper to generate a duck-typed WorkingMemory mock
+  const createMockMemory = (
+    state: MockMemoryState = { facts: [], openedFiles: [], summaries: [] },
+  ) =>
+    ({
+      getState: vi.fn().mockReturnValue(state),
+    }) as any;
 
-    mockHistory = {
-      getAll: vi.fn().mockReturnValue([]),
-    };
+  // Helper to generate a duck-typed MessageHistory mock
+  const createMockHistory = (messages: Message[] = []) =>
+    ({
+      getAll: vi.fn().mockReturnValue(messages),
+    }) as any;
+
+  it("should assemble the correct priority layout with empty memory", () => {
+    const memory = createMockMemory();
+    const history = createMockHistory([{ role: "user", content: "hello" }]);
+
+    const context = buildContext(history, memory, "Fix the bug");
+
+    expect(context.length).toBe(2);
+    expect(context[0].role).toBe("system");
+
+    const sysPrompt = context[0].content;
+    expect(sysPrompt).toContain("You are a test agent.");
+    expect(sysPrompt).toContain("OPEN FILES\n- None");
+    expect(sysPrompt).toContain("FACTS\n- None");
+    expect(sysPrompt).toContain("=== CURRENT TASK ===\nFix the bug");
+
+    expect(context[1].content).toBe("hello");
   });
 
-  it("should assemble the exact structure expected by the LLM client, locking system prompt at index 0", () => {
-    // Arrange: Simulate a sliding window history with one recent user message
-    const mockMessages: Message[] = [{ role: "user", content: "test input" }];
-    (mockHistory.getAll as any).mockReturnValue(mockMessages);
-
-    // Act
-    const context = buildContext(
-      mockHistory as MessageHistory,
-      mockMemory as WorkingMemory,
-      "Test Task",
-    );
-
-    // Assert: Validates Order of Operations
-    expect(context).toHaveLength(2);
-    expect(context[0].role).toBe("system"); // System must always be index 0
-    expect(context[1].role).toBe("user");
-    expect(context[1].content).toBe("test input");
-  });
-
-  it("should accurately inject WorkingMemory facts, file states, and tasks into the system prompt", () => {
-    // Arrange: Simulate a populated working memory
-    (mockMemory.getState as any).mockReturnValue({
-      facts: ["Express server is in app.ts"],
-      openedFiles: ["src/app.ts"],
-      summaries: ["Fixed router bug"],
+  it("should cleanly format WorkingMemory arrays into Markdown lists", () => {
+    const memory = createMockMemory({
+      facts: ["Test suite currently failing"],
+      openedFiles: ["src/app.ts", "src/parser.ts"],
+      summaries: ["Fixed syntax error"],
     });
+    const history = createMockHistory();
 
-    // Act
-    const context = buildContext(
-      mockHistory as MessageHistory,
-      mockMemory as WorkingMemory,
-      "Debug Routing Task",
-    );
-    const systemPrompt = context[0].content;
+    const context = buildContext(history, memory, "Next task");
+    const sysPrompt = context[0].content;
 
-    // Assert: Validates Memory Injection
-    expect(systemPrompt).toContain("MOCK_BASE_SYSTEM_PROMPT");
-    expect(systemPrompt).toContain("Express server is in app.ts");
-    expect(systemPrompt).toContain("src/app.ts");
-    expect(systemPrompt).toContain("Fixed router bug");
-    expect(systemPrompt).toContain("Debug Routing Task");
+    expect(sysPrompt).toContain("OPEN FILES\n- src/app.ts\n- src/parser.ts");
+    expect(sysPrompt).toContain("FACTS\n- Test suite currently failing");
+    expect(sysPrompt).toContain("PROGRESS\n- Fixed syntax error");
   });
 
-  it("should gracefully handle an empty memory state with default fallback text", () => {
-    // Act: Memory mock defaults to empty arrays from beforeEach
-    const context = buildContext(
-      mockHistory as MessageHistory,
-      mockMemory as WorkingMemory,
-      "Initial Task",
-    );
-    const systemPrompt = context[0].content;
+  it("should aggressively prune the oldest history messages when token budget is tight", () => {
+    const memory = createMockMemory();
 
-    // Assert: Validates boundary compliance for fresh states
-    expect(systemPrompt).toContain("Facts Discovered: None");
-    expect(systemPrompt).toContain("Files Opened: None");
-    expect(systemPrompt).toContain("Task Progress Summaries: None");
-    expect(systemPrompt).toContain("=== CURRENT TASK ===\nInitial Task");
+    // Simulate a maxed-out budget (100,000 tokens = ~400,000 characters)
+    const massiveOldString = "A".repeat(390000); // ~97,500 tokens
+    const recentString = "B".repeat(20000); // ~5,000 tokens
+
+    // Base context takes some tokens, so 97.5k + 5k = ~102.5k (which exceeds the 100k limit)
+    const history = createMockHistory([
+      { role: "assistant", content: massiveOldString }, // Oldest: Should be dropped
+      { role: "user", content: recentString }, // Newest: Should be kept
+    ]);
+
+    const context = buildContext(history, memory, "Task");
+
+    // The final array should contain the System Prompt and ONLY the newest history message
+    expect(context.length).toBe(2);
+    expect(context[1].content).toBe(recentString);
+    expect(context[1].content).not.toBe(massiveOldString);
+  });
+
+  it("should throw ContextBudgetExceededError if base context alone breaches the safety limit", () => {
+    const memory = createMockMemory();
+
+    // Create an impossibly massive current task string to trigger the circuit breaker
+    const massiveTask = "C".repeat(450000); // ~112,500 tokens (Exceeds 100k max limit)
+    const history = createMockHistory();
+
+    // The builder must fail deterministically rather than crashing the API
+    expect(() => buildContext(history, memory, massiveTask)).toThrowError(
+      ContextBudgetExceededError,
+    );
   });
 });

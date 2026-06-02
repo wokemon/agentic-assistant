@@ -11,12 +11,18 @@ export class WorkingMemory {
 
   // Store persistent knowledge, dropping the oldest if capacity is reached
   addFact(fact: string) {
+    if (this.facts.has(fact)) {
+      this.facts.delete(fact);
+    }
+
     this.facts.add(fact);
 
-    // JS Sets preserve insertion order. If we breach the limit, delete the first (oldest) item.
     if (this.facts.size > this.MAX_FACTS) {
       const oldestFact = this.facts.values().next().value;
-      if (oldestFact) this.facts.delete(oldestFact);
+
+      if (oldestFact) {
+        this.facts.delete(oldestFact);
+      }
     }
   }
 

@@ -1,3 +1,5 @@
+import { stableStringify } from "./stableStringtify";
+
 export type ToolSignature = {
   tool: string;
   args: string;
@@ -9,10 +11,9 @@ export class LoopGuard {
   addAction(tool: string, args: unknown) {
     this.recentActions.push({
       tool,
-      args: JSON.stringify(args),
+      args: stableStringify(args),
     });
 
-    // keep recent history small
     if (this.recentActions.length > 5) {
       this.recentActions.shift();
     }
@@ -21,7 +22,7 @@ export class LoopGuard {
   isRepeating(tool: string, args: unknown): boolean {
     const signature = {
       tool,
-      args: JSON.stringify(args),
+      args: stableStringify(args),
     };
 
     return this.recentActions.some(

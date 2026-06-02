@@ -26,4 +26,11 @@ export class WorkingMemory {
       summaries: this.summaries,
     };
   }
+
+  // Reset memory state (if needed for future extensions)
+  clear() {
+    this.facts.clear();
+    this.openedFiles.clear();
+    this.summaries = [];
+  }
 }

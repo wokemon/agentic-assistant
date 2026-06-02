@@ -3,6 +3,18 @@ import { WorkingMemory } from "./workingMemory";
 import { MessageHistory } from "../agent/history";
 import { SYSTEM_PROMPT } from "../agent/prompt";
 
+// Fast zero-dependency heuristic: 1 token ≈ 4 characters
+const CHARS_PER_TOKEN = 4;
+// Set this to ~80% of your chosen model's true limit to leave room for the output response
+const MAX_CONTEXT_TOKENS = 100000;
+
+export class ContextBudgetExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ContextBudgetExceededError";
+  }
+}
+
 export function buildContext(
   history: MessageHistory,
   memory: WorkingMemory,
@@ -10,24 +22,66 @@ export function buildContext(
 ): Message[] {
   const state = memory.getState();
 
-  // Dynamically inject memory into the system instructions
+  // 1. Structural Memory Layout (P1)
+  // Formatted cleanly with Markdown lists for optimal LLM parsing
+  const memoryContent = `
+=== CURRENT WORKING MEMORY ===
+
+OPEN FILES
+${state.openedFiles.length > 0 ? state.openedFiles.map((f) => `- ${f}`).join("\n") : "- None"}
+
+FACTS
+${state.facts.length > 0 ? state.facts.map((f) => `- ${f}`).join("\n") : "- None"}
+
+PROGRESS
+${state.summaries.length > 0 ? state.summaries.map((s) => `- ${s}`).join("\n") : "- None"}
+`.trim();
+
+  // 2. Priority-Based Context Assembly (P2)
+  // System Prompt ↓ Working Memory ↓ Current Task
   const dynamicSystemContent = `
 ${SYSTEM_PROMPT}
 
-=== CURRENT WORKING MEMORY ===
-Facts Discovered: ${state.facts.length > 0 ? state.facts.join(" | ") : "None"}
-Files Opened: ${state.openedFiles.length > 0 ? state.openedFiles.join(", ") : "None"}
-Task Progress Summaries: ${state.summaries.length > 0 ? state.summaries.join("\n- ") : "None"}
+${memoryContent}
 
 === CURRENT TASK ===
 ${currentTask}
-`;
+`.trim();
 
-  // Assemble the final context payload
-  const context: Message[] = [
-    { role: "system", content: dynamicSystemContent.trim() },
-    ...history.getAll(), // This now only contains the safe, pruned sliding window
+  const baseContext: Message[] = [
+    { role: "system", content: dynamicSystemContent },
   ];
 
-  return context;
+  // 3. Token Budget Enforcement (P0)
+  const baseChars = dynamicSystemContent.length;
+  const baseTokens = Math.ceil(baseChars / CHARS_PER_TOKEN);
+
+  // If the immutable core instructions are too large, the agent cannot function safely.
+  if (baseTokens > MAX_CONTEXT_TOKENS) {
+    throw new ContextBudgetExceededError(
+      `Base context (${baseTokens} tokens) exceeds maximum budget of ${MAX_CONTEXT_TOKENS} tokens. Clear working memory or reduce task scope.`,
+    );
+  }
+
+  // 4. Safe History Pruning
+  let remainingTokens = MAX_CONTEXT_TOKENS - baseTokens;
+  const safeHistory: Message[] = [];
+  const rawHistory = history.getAll();
+
+  // Iterate backwards to prioritize keeping the most recent actions, dropping the oldest.
+  for (let i = rawHistory.length - 1; i >= 0; i--) {
+    const msg = rawHistory[i];
+    const msgTokens = Math.ceil((msg.content.length || 0) / CHARS_PER_TOKEN);
+
+    if (remainingTokens - msgTokens > 0) {
+      safeHistory.unshift(msg); // Add to the front to maintain chronological order
+      remainingTokens -= msgTokens;
+    } else {
+      // The budget is exhausted. We stop ingesting older history.
+      break;
+    }
+  }
+
+  // Return the final prioritized payload
+  return [...baseContext, ...safeHistory];
 }

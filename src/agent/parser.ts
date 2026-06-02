@@ -80,7 +80,7 @@ export function parseAgentResponse(response: string): ParseResult {
   try {
     logger.debug("Attempting tool call parsing");
 
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    const jsonMatch = response.match(/\{[\s\S]*?\}/);
 
     if (!jsonMatch) {
       logger.warn(

@@ -24,16 +24,53 @@ describe("WorkingMemory Validation Suite", () => {
     expect(state.facts).toContain("The database port is 5432");
   });
 
-  it("should correctly track opened files and ignore duplicate paths", () => {
+  it("should drop the oldest fact when MAX_FACTS is exceeded", () => {
+    // Add 21 facts, exceeding the limit of 20
+    for (let i = 1; i <= 21; i++) {
+      memory.addFact(`Fact number ${i}`);
+    }
+
+    const state = memory.getState();
+
+    // Limit should be capped at 20
+    expect(state.facts).toHaveLength(20);
+    // The oldest fact ("Fact number 1") should be removed
+    expect(state.facts).not.toContain("Fact number 1");
+    // The newest fact ("Fact number 21") should be present
+    expect(state.facts).toContain("Fact number 21");
+  });
+
+  it("should correctly track opened files, ignore duplicates, and maintain 'bounded recency'", () => {
     memory.addOpenedFile("src/agent/loop.ts");
-    memory.addOpenedFile("src/agent/loop.ts"); // Intentional duplicate
     memory.addOpenedFile("src/tools/registry.ts");
+    memory.addOpenedFile("src/agent/loop.ts"); // Re-opening should move it to the end (most recent)
 
     const state = memory.getState();
 
     expect(state.openedFiles).toHaveLength(2);
-    expect(state.openedFiles).toContain("src/agent/loop.ts");
-    expect(state.openedFiles).toContain("src/tools/registry.ts");
+    // Evaluates bounded recency: The re-opened file should be the last item
+    expect(state.openedFiles[0]).toBe("src/tools/registry.ts");
+    expect(state.openedFiles[1]).toBe("src/agent/loop.ts");
+  });
+
+  it("should safely handle undefined file paths", () => {
+    memory.addOpenedFile(undefined);
+    const state = memory.getState();
+    expect(state.openedFiles).toHaveLength(0);
+  });
+
+  it("should drop the oldest opened file when MAX_OPEN_FILES is exceeded", () => {
+    // Add 21 files, exceeding the limit of 20
+    for (let i = 1; i <= 21; i++) {
+      memory.addOpenedFile(`file${i}.ts`);
+    }
+
+    const state = memory.getState();
+
+    expect(state.openedFiles).toHaveLength(20);
+    // "file1.ts" should be dropped
+    expect(state.openedFiles).not.toContain("file1.ts");
+    expect(state.openedFiles).toContain("file21.ts");
   });
 
   it("should store and retain loop iteration summaries in chronological order", () => {
@@ -47,11 +84,32 @@ describe("WorkingMemory Validation Suite", () => {
     expect(state.summaries[1]).toBe("Modified token budget estimator");
   });
 
-  it("should return empty arrays for a fresh memory state", () => {
+  it("should drop the oldest summary when MAX_SUMMARIES is exceeded", () => {
+    // Add 11 summaries, exceeding the limit of 10
+    for (let i = 1; i <= 11; i++) {
+      memory.addSummary(`Summary ${i}`);
+    }
+
     const state = memory.getState();
 
-    expect(state.facts).toEqual([]);
-    expect(state.openedFiles).toEqual([]);
-    expect(state.summaries).toEqual([]);
+    expect(state.summaries).toHaveLength(10);
+    expect(state.summaries).not.toContain("Summary 1");
+    expect(state.summaries).toContain("Summary 11");
+  });
+
+  it("should cleanly wipe the memory state when clear() is called", () => {
+    memory.addFact("test fact");
+    memory.addOpenedFile("test.ts");
+    memory.addSummary("test summary");
+
+    // Clear the memory
+    memory.clear();
+
+    const state = memory.getState();
+
+    // Verify all arrays are empty and references were broken/reset
+    expect(state.facts).toHaveLength(0);
+    expect(state.openedFiles).toHaveLength(0);
+    expect(state.summaries).toHaveLength(0);
   });
 });

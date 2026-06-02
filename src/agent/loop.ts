@@ -90,11 +90,6 @@ export async function runAgent(userInput: string) {
     if (response.toolCall) {
       const { tool: toolName, args } = response.toolCall;
 
-      if (!tools[toolName]) {
-        history.add("system", `Tool "${toolName}" does not exist.`);
-        continue;
-      }
-
       if (loopGuard.isRepeating(toolName, args)) {
         agentLogger.warn({ tool: toolName, args }, "Loop guard triggered");
         return `Agent stopped: repeating tool call detected (${toolName}).`;

@@ -23,6 +23,35 @@ type ParseResult =
       error: string;
     };
 
+// --------------------------------------------------
+// Balanced JSON extraction fallback
+// --------------------------------------------------
+function extractJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+
+  if (start === -1) {
+    return null;
+  }
+
+  let depth = 0;
+
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+
+    if (char === "{") {
+      depth++;
+    } else if (char === "}") {
+      depth--;
+
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
 export function parseAgentResponse(response: string): ParseResult {
   logger.debug(
     {
@@ -37,9 +66,6 @@ export function parseAgentResponse(response: string): ParseResult {
   // FINAL ANSWER MODE
   // ----------------------------
 
-  // Defensive Engineering: Strict regex anchored to the start of a line (^).
-  // The 'm' flag ensures it checks the start of every line, not just the very first character.
-  // [\s\S]* safely captures all remaining characters, including multi-line outputs.
   const finalMatch = response.match(/^FINAL:\s*([\s\S]*)/m);
 
   if (finalMatch) {
@@ -80,30 +106,51 @@ export function parseAgentResponse(response: string): ParseResult {
   try {
     logger.debug("Attempting tool call parsing");
 
-    const jsonMatch = response.match(/\{[\s\S]*?\}/);
+    let parsed: unknown;
 
-    if (!jsonMatch) {
-      logger.warn(
+    // ------------------------------------
+    // Primary Path: Strict JSON Response
+    // ------------------------------------
+
+    try {
+      parsed = JSON.parse(response);
+
+      logger.debug(
         {
-          response,
+          parsed,
         },
-        "No JSON object found in response",
+        "Parsed response as strict JSON",
       );
+    } catch {
+      // ------------------------------------
+      // Fallback: Extract JSON from text
+      // ------------------------------------
 
-      return {
-        success: false,
-        error: "No JSON object found.",
-      };
+      const jsonText = extractJsonObject(response);
+
+      if (!jsonText) {
+        logger.warn(
+          {
+            response,
+          },
+          "No JSON object found in response",
+        );
+
+        return {
+          success: false,
+          error: "No JSON object found.",
+        };
+      }
+
+      parsed = JSON.parse(jsonText);
+
+      logger.debug(
+        {
+          parsed,
+        },
+        "Parsed extracted JSON object",
+      );
     }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    logger.debug(
-      {
-        parsed,
-      },
-      "Tool call JSON parsed",
-    );
 
     const validated = toolCallSchema.safeParse(parsed);
 

@@ -54,13 +54,12 @@ export async function runAgent(userInput: string) {
 
     if (!parsed.success) {
       malformedCount++;
+      loopGuard.trackParseFailure();
       agentLogger.warn(
         { malformedCount, error: parsed.error },
         "Malformed response",
       );
 
-      // Architectural Fix: Do not store garbage rawResponse in 'assistant' role.
-      // Just inject the system warning to guide the next iteration.
       history.add(
         "system",
         `Your previous response was invalid (${parsed.error}). Return valid JSON only.`,
@@ -70,6 +69,12 @@ export async function runAgent(userInput: string) {
         agentLogger.error("Agent stopped due to repeated malformed responses.");
         return "Agent stopped: too many malformed responses.";
       }
+
+      if (loopGuard.isRunaway()) {
+        agentLogger.error("Agent detected runaway pattern");
+        return "Agent stopped: runaway execution detected (repeated failures or parse errors).";
+      }
+
       continue;
     }
 
@@ -102,6 +107,14 @@ export async function runAgent(userInput: string) {
       }
 
       const result = await executeToolCall(toolName, args);
+
+      if (!result.success) {
+        loopGuard.trackFailure(toolName, args);
+
+        if (loopGuard.isRepeatedlyFailing(toolName, args)) {
+          agentLogger.warn({ tool: toolName }, "Tool repeatedly failing");
+        }
+      }
 
       // P0-1: Explicitly structure the output to avoid arbitrary object JSON bloat.
       // We rely entirely on the executor's truncation logic here.

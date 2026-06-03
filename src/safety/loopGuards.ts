@@ -5,8 +5,17 @@ export type ToolSignature = {
   args: string;
 };
 
+export interface ExecutionMetrics {
+  totalCalls: number;
+  failedCalls: number;
+  parseFailures: number;
+}
+
 export class LoopGuard {
   private recentActions: ToolSignature[] = [];
+  private failedActions: ToolSignature[] = [];
+  private parseFailureCount = 0;
+  private totalExecutions = 0;
 
   addAction(tool: string, args: unknown) {
     this.recentActions.push({
@@ -17,6 +26,23 @@ export class LoopGuard {
     if (this.recentActions.length > 5) {
       this.recentActions.shift();
     }
+
+    this.totalExecutions++;
+  }
+
+  trackFailure(tool: string, args: unknown) {
+    this.failedActions.push({
+      tool,
+      args: stableStringify(args),
+    });
+
+    if (this.failedActions.length > 5) {
+      this.failedActions.shift();
+    }
+  }
+
+  trackParseFailure() {
+    this.parseFailureCount++;
   }
 
   isRepeating(tool: string, args: unknown): boolean {
@@ -29,5 +55,43 @@ export class LoopGuard {
       (action) =>
         action.tool === signature.tool && action.args === signature.args,
     );
+  }
+
+  isRepeatedlyFailing(tool: string, args: unknown): boolean {
+    if (this.failedActions.length < 2) return false;
+
+    const signature = {
+      tool,
+      args: stableStringify(args),
+    };
+
+    const failureCount = this.failedActions.filter(
+      (action) =>
+        action.tool === signature.tool && action.args === signature.args,
+    ).length;
+
+    return failureCount >= 2;
+  }
+
+  isRunaway(): boolean {
+    if (this.parseFailureCount >= 3) return true;
+
+    if (
+      this.recentActions.length >= 3 &&
+      this.failedActions.length >= 3 &&
+      this.recentActions.length === this.failedActions.length
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  getMetrics(): ExecutionMetrics {
+    return {
+      totalCalls: this.totalExecutions,
+      failedCalls: this.failedActions.length,
+      parseFailures: this.parseFailureCount,
+    };
   }
 }

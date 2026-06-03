@@ -58,4 +58,81 @@ describe("LoopGuard", () => {
 
     expect(guard.isRepeating("complex_tool", complexArgs)).toBe(true);
   });
+
+  it("should track failed tool calls", () => {
+    const guard = new LoopGuard();
+
+    guard.trackFailure("read_files", { path: "file.ts" });
+
+    expect(guard.isRepeatedlyFailing("read_files", { path: "file.ts" })).toBe(
+      false,
+    );
+  });
+
+  it("should detect repeatedly failing tool", () => {
+    const guard = new LoopGuard();
+
+    const args = { path: "file.ts" };
+
+    guard.trackFailure("read_files", args);
+    guard.trackFailure("read_files", args);
+
+    expect(guard.isRepeatedlyFailing("read_files", args)).toBe(true);
+  });
+
+  it("should not flag single failure", () => {
+    const guard = new LoopGuard();
+
+    guard.trackFailure("read_files", { path: "file.ts" });
+
+    expect(guard.isRepeatedlyFailing("read_files", { path: "file.ts" })).toBe(
+      false,
+    );
+  });
+
+  it("should track parse failures", () => {
+    const guard = new LoopGuard();
+
+    guard.trackParseFailure();
+    guard.trackParseFailure();
+
+    expect(guard.isRunaway()).toBe(false);
+  });
+
+  it("should detect runaway on 3 parse failures", () => {
+    const guard = new LoopGuard();
+
+    guard.trackParseFailure();
+    guard.trackParseFailure();
+    guard.trackParseFailure();
+
+    expect(guard.isRunaway()).toBe(true);
+  });
+
+  it("should detect runaway when all recent actions fail", () => {
+    const guard = new LoopGuard();
+
+    for (let i = 0; i < 3; i++) {
+      guard.addAction("tool", { id: i });
+      guard.trackFailure("tool", { id: i });
+    }
+
+    expect(guard.isRunaway()).toBe(true);
+  });
+
+  it("should return metrics", () => {
+    const guard = new LoopGuard();
+
+    guard.addAction("tool1", { id: 1 });
+    guard.addAction("tool2", { id: 2 });
+    guard.trackFailure("tool1", { id: 1 });
+    guard.trackParseFailure();
+
+    const metrics = guard.getMetrics();
+
+    expect(metrics.totalCalls).toBe(2);
+    expect(metrics.failedCalls).toBe(1);
+    expect(metrics.parseFailures).toBe(1);
+  });
 });
+

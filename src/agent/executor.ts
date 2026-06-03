@@ -1,5 +1,8 @@
 import { tools } from "../tools/registry";
 import { logger } from "../shared/logger";
+import { CommandPolicy } from "../safety/commandPolicy";
+import { PathValidation } from "../safety/pathValidation";
+import { SafetyBlockedError } from "../safety/errors";
 
 const TOOL_TIMEOUT_MS = 10_000;
 
@@ -89,6 +92,57 @@ export async function executeToolCall(
       "Tool argument validation failed",
     );
     return { success: false, output: "", error: parsed.error.message };
+  }
+
+  try {
+    // Safety validation for command-based tools
+    if (toolName === "terminal_execute") {
+      const termArgs = parsed.data as any;
+      CommandPolicy.validateOrThrow(termArgs.command);
+    }
+
+    // Safety validation for write_files specifically
+    if (toolName === "write_files") {
+      const writeArgs = parsed.data as any;
+      const filePaths = writeArgs.files?.map((f: any) => f.path) || [];
+      if (filePaths.length > 0) {
+        PathValidation.validateOrThrowMultiple(filePaths);
+      }
+    }
+
+    // Safety validation for other filesystem tools
+    const otherFilesystemTools = [
+      "read_files",
+      "list_files",
+      "read_file_lines",
+      "search_files",
+    ];
+    if (otherFilesystemTools.includes(toolName)) {
+      const fsArgs = parsed.data as any;
+
+      if (fsArgs.path) {
+        PathValidation.validateOrThrow(fsArgs.path);
+      }
+      if (fsArgs.paths) {
+        PathValidation.validateOrThrowMultiple(fsArgs.paths);
+      }
+      if (fsArgs.directory) {
+        PathValidation.validateOrThrow(fsArgs.directory);
+      }
+    }
+  } catch (error) {
+    if (error instanceof SafetyBlockedError) {
+      logger.warn(
+        { tool: toolName, error: error.name, category: error.category },
+        "Tool execution blocked by safety policy",
+      );
+      return {
+        success: false,
+        output: "",
+        error: error.message,
+      };
+    }
+    throw error;
   }
 
   const startTime = Date.now();

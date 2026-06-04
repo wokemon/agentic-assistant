@@ -20,8 +20,44 @@ type ReadFileLinesArgs = z.infer<typeof schema>;
 
 export const readFileLinesTool: ToolDefinition = {
   name: "read_file_lines",
-  description:
-    "Read specific lines from a file. Use this AFTER search_files to extract exact code chunks (e.g., lines 50-100) without blowing up your context window.",
+  description: `
+Read a specific line range from a file.
+
+Use this tool when:
+- Inspecting a targeted section of code
+- Reviewing functions, classes, or logic identified by search_files
+- Verifying code before making edits
+- Gathering only the relevant context needed for reasoning
+
+Prefer this tool over reading an entire file when:
+- The file is large
+- Only a specific code region is relevant
+- You already know the approximate location of the code
+
+Typical workflow:
+- search_files -> identify relevant matches
+- read_file_lines -> inspect the surrounding code
+- write_file -> modify the implementation if needed
+
+Input:
+- filePath: Workspace-relative file path
+- startLine: First line to read (1-based)
+- endLine: Last line to read (1-based, inclusive)
+
+Output:
+- The requested lines with line numbers preserved
+
+Constraints:
+- Only files inside the project workspace may be accessed
+- Directory traversal outside the workspace is prohibited
+- Very large files may be rejected for safety reasons
+- Returns only the requested line range to minimize context usage
+
+Do not use this tool when:
+- A directory listing is needed (use list_files)
+- The target file location is unknown (use search_files or list_files first)
+- Full-file context is required and the file is reasonably small
+`,
   schema,
   // Maintain the (args: any) pattern to satisfy the global ToolDefinition interface
   async execute(args: any) {

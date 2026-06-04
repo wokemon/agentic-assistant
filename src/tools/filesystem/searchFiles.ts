@@ -13,8 +13,49 @@ type SearchFilesArgs = z.infer<typeof schema>;
 
 export const searchFilesTool: ToolDefinition = {
   name: "search_files",
-  description:
-    "Search for a specific string or keyword across all files in a directory. Use this to pinpoint which files contain the code you need before reading them.",
+  description: `
+Search files in the workspace for a specific keyword, identifier, function name, class name, error message, import, or code pattern.
+
+Use this tool when:
+- The location of relevant code is unknown
+- Finding where a function, variable, class, or symbol is defined
+- Locating usages of a component across the codebase
+- Investigating errors, stack traces, or log messages
+- Identifying which files should be inspected next
+
+This should usually be the FIRST retrieval step when working in an unfamiliar codebase.
+
+Prefer this workflow:
+- search_files -> locate relevant files
+- read_file_lines -> inspect targeted code sections
+- read_files -> gather broader context if needed
+- write_file -> apply modifications
+
+Input:
+- query: String to search for
+- directory: Workspace directory to search within
+
+Output:
+- Relative file paths containing the query
+
+Output does NOT include:
+- File contents
+- Matching line numbers
+- Code snippets
+
+Use read_file_lines or read_files after locating relevant files.
+
+Constraints:
+- Searches recursively within the specified directory
+- May skip large files for performance and safety reasons
+- Common dependency directories (e.g. node_modules) may be excluded
+- Only workspace files may be searched
+
+Do not use this tool when:
+- File contents are already known
+- A directory listing is needed (use list_files)
+- Reading code is required (use read_file_lines or read_files)
+`,
   schema,
   async execute(args: any) {
     const { query, directory } = args as SearchFilesArgs;

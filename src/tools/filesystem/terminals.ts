@@ -19,8 +19,52 @@ type TerminalExecuteArgs = z.infer<typeof schema>;
 export const terminalTool: ToolDefinition<TerminalExecuteArgs> = {
   name: "terminal_execute",
 
-  description:
-    "Executes a command in the host terminal. Use this to check environment info, manage dependencies, or run scripts. Caution: Windows environments require dir instead of ls.",
+  description: `
+Execute a terminal command within the project environment.
+
+Use this tool when:
+- Running tests
+- Building or compiling the project
+- Verifying code changes
+- Running project scripts
+- Checking environment information
+- Inspecting dependency or package status
+- Reproducing or diagnosing runtime errors
+
+Typical workflow:
+- search_files -> locate relevant code
+- read_file_lines/read_files -> understand implementation
+- write_file -> apply changes
+- terminal_execute -> verify the result
+
+Input:
+- command: Shell command to execute
+- cwd: Optional working directory
+- timeoutMs: Optional execution timeout in milliseconds
+
+Output:
+- Standard output from the command
+- Error information and exit code if execution fails
+
+Use this tool to:
+- Run tests (npm test, pnpm test, vitest)
+- Run builds (npm run build, tsc)
+- Execute project scripts
+- Validate fixes after making code changes
+
+Do not use this tool when:
+- Reading source code (use read_files or read_file_lines)
+- Locating files (use search_files or list_files)
+- Making file modifications directly (use write_file)
+- The required information is already available from file inspection
+
+Important:
+- Commands may modify the project state
+- Commands may fail due to environment, permissions, dependencies, or configuration issues
+- Failed commands provide useful observations for debugging and should not be treated as fatal
+- Prefer targeted verification commands over broad or expensive commands
+- Avoid repeatedly executing the same failing command without new information
+`,
 
   schema,
 

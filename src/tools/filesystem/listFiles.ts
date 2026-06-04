@@ -13,7 +13,31 @@ type ListFilesArgs = z.infer<typeof schema>;
 export const listFilesTool: ToolDefinition<ListFilesArgs> = {
   name: "list_files",
 
-  description: "List files in a directory",
+  description: `
+List the files and directories contained within a specified workspace path.
+
+Use this tool when:
+- Exploring the project structure
+- Finding files relevant to a task
+- Inspecting a directory before reading or editing files
+- Determining where source code, tests, or configuration files are located
+
+Do not use this tool when:
+- File contents are needed (use read_file instead)
+- Modifying files or directories
+- Executing commands
+
+Input:
+- path: Relative or allowed workspace directory path
+
+Output:
+- A newline-separated list of file and directory names within the target directory
+
+Notes:
+- Returns only immediate directory contents and does not recurse into subdirectories
+- May return both files and folders
+- Use this tool before read_file when the target file location is unknown
+`,
 
   schema,
 

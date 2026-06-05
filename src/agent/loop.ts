@@ -96,8 +96,20 @@ export async function runAgent(userInput: string) {
       const { tool: toolName, args } = response.toolCall;
 
       if (loopGuard.isRepeating(toolName, args)) {
-        agentLogger.warn({ tool: toolName, args }, "Loop guard triggered");
-        return `Agent stopped: repeating tool call detected (${toolName}).`;
+        history.add(
+          "system",
+          `You already executed:
+
+        Tool: ${toolName}
+
+        with identical arguments.
+
+        Do not repeat the same action.
+
+        Use the information already gathered and choose a different action.`,
+        );
+
+        continue;
       }
       loopGuard.addAction(toolName, args);
 

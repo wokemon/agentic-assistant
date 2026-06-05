@@ -80,8 +80,18 @@ export async function executeToolCall(
   logger.info({ tool: toolName, args: rawArgs }, "Tool execution requested");
 
   if (!tool) {
-    logger.warn({ tool: toolName }, "Unknown tool requested");
-    return { success: false, output: "", error: `Unknown tool: ${toolName}` };
+    const availableTools = Object.keys(tools).join(", ");
+
+    return {
+      success: false,
+      output: "",
+      error: `Unknown tool: ${toolName}
+
+Available tools:
+${availableTools}
+
+Choose one of the available tools.`,
+    };
   }
 
   const parsed = tool.schema.safeParse(rawArgs);

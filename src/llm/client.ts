@@ -9,7 +9,7 @@ dotenv.config();
 const apiKey = process.env.OPENAI_API_KEY;
 const baseURL = process.env.OPENAI_BASE_URL;
 // Upgraded to your desired production model target
-const model = process.env.MODEL || "openai/gpt-5.4-nano";
+const model = process.env.LLM_MODEL || "gpt-5.4-nano-2026-03-17";
 
 // Defaulting to 100k to leave a 28k buffer for the LLM's output response
 const MAX_CONTEXT_TOKENS = parseInt(

@@ -31,8 +31,20 @@ async function main() {
     try {
       console.log("\n⏳ Running agent...\n");
       const result = await runAgent(input);
+
       console.log("📝 Agent response:\n");
-      console.log(result);
+
+      switch (result.status) {
+        case "completed":
+          console.log(result.finalAnswer);
+          break;
+
+        default:
+          console.log(`Agent stopped: ${result.status}`);
+      }
+
+      console.log("\nDiagnostics:");
+      console.table(result.diagnostics);
       console.log("\n");
     } catch (error) {
       logger.error({ error }, "Agent execution failed");

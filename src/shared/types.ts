@@ -27,6 +27,29 @@ export interface AgentResponse {
 }
 
 /* =========================
+   Agent Runtime Types
+========================= */
+
+export type AgentStatus =
+  | "completed"
+  | "max_iterations"
+  | "parse_failure"
+  | "context_budget_exceeded";
+
+export interface AgentDiagnostics {
+  iterations: number;
+  toolCalls: number;
+  toolFailures: number;
+  malformedResponses: number;
+}
+
+export interface AgentResult {
+  status: AgentStatus;
+  finalAnswer?: string;
+  diagnostics: AgentDiagnostics;
+}
+
+/* =========================
    Tool Runtime Types
 ========================= */
 

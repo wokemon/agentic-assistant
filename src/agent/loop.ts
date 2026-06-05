@@ -1,7 +1,7 @@
 import crypto from "crypto";
+import type { AgentResult } from "../shared/types";
 import { parseAgentResponse } from "./parser";
 import { generateResponse } from "../llm/client";
-import { tools } from "../tools/registry";
 import { LoopGuard } from "../safety/loopGuards";
 import { logger } from "../shared/logger";
 import { executeToolCall } from "./executor";
@@ -11,7 +11,7 @@ import { buildContext } from "../context/contextBuilder";
 
 const MAX_ITERATIONS = 10;
 
-export async function runAgent(userInput: string) {
+export async function runAgent(userInput: string): Promise<AgentResult> {
   const sessionId = crypto.randomUUID();
   const agentLogger = logger.child({ component: "agent_loop", sessionId });
 
@@ -25,7 +25,15 @@ export async function runAgent(userInput: string) {
 
   let malformedCount = 0;
 
+  const diagnostics = {
+    iterations: 0,
+    toolCalls: 0,
+    toolFailures: 0,
+    malformedResponses: 0,
+  };
+
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    diagnostics.iterations = iteration + 1;
     // 2. Build the context dynamically BEFORE passing to the LLM
     const context = buildContext(history, memory, userInput);
 
@@ -45,7 +53,10 @@ export async function runAgent(userInput: string) {
         error.name === "ContextBudgetExceededError"
       ) {
         agentLogger.error("Agent stopped: Context budget exceeded.");
-        return "Agent stopped: Context budget exceeded. Please refine your request or clear memory.";
+        return {
+          status: "context_budget_exceeded",
+          diagnostics,
+        };
       }
       throw error; // Re-throw unknown errors
     }
@@ -54,6 +65,8 @@ export async function runAgent(userInput: string) {
 
     if (!parsed.success) {
       malformedCount++;
+      diagnostics.malformedResponses++;
+
       loopGuard.trackParseFailure();
       agentLogger.warn(
         { malformedCount, error: parsed.error },
@@ -67,12 +80,18 @@ export async function runAgent(userInput: string) {
 
       if (malformedCount >= 3) {
         agentLogger.error("Agent stopped due to repeated malformed responses.");
-        return "Agent stopped: too many malformed responses.";
+        return {
+          status: "parse_failure",
+          diagnostics,
+        };
       }
 
       if (loopGuard.isRunaway()) {
         agentLogger.error("Agent detected runaway pattern");
-        return "Agent stopped: runaway execution detected (repeated failures or parse errors).";
+        return {
+          status: "parse_failure",
+          diagnostics,
+        };
       }
 
       continue;
@@ -89,7 +108,11 @@ export async function runAgent(userInput: string) {
         { iterations: iteration + 1, finalAnswer: response.finalAnswer },
         "Agent completed successfully",
       );
-      return response.finalAnswer;
+      return {
+        status: "completed",
+        finalAnswer: response.finalAnswer,
+        diagnostics,
+      };
     }
 
     if (response.toolCall) {
@@ -118,9 +141,12 @@ export async function runAgent(userInput: string) {
         memory.addOpenedFile(args.path || args.paths?.[0]);
       }
 
+      diagnostics.toolCalls++;
+
       const result = await executeToolCall(toolName, args);
 
       if (!result.success) {
+        diagnostics.toolFailures++;
         loopGuard.trackFailure(toolName, args);
 
         if (loopGuard.isRepeatedlyFailing(toolName, args)) {
@@ -143,5 +169,8 @@ export async function runAgent(userInput: string) {
     { iterations: MAX_ITERATIONS },
     "Agent stopped due to max iterations",
   );
-  return "Agent stopped: max iterations reached.";
+  return {
+    status: "max_iterations",
+    diagnostics,
+  };
 }

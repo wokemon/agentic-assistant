@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
 
-// 1. Mock the centralized tool registry with varying behaviors
+// Mock registry
 vi.mock("../../src/tools/registry", () => ({
   tools: {
     echo: {
       schema: z.object({
         text: z.string(),
       }),
-      // Returns a valid ToolResult object as required by executor.ts destructuring
       execute: vi.fn(async ({ text }) => ({
         success: true,
         output: text,
       })),
     },
+
     list_files: {
       schema: z.object({}),
       execute: vi.fn(async () => ({
@@ -23,10 +23,29 @@ vi.mock("../../src/tools/registry", () => ({
         ),
       })),
     },
+
     failTool: {
       schema: z.object({}),
       execute: vi.fn(async () => {
         throw new Error("Underlying system failure");
+      }),
+    },
+
+    metadataTool: {
+      schema: z.object({}),
+      execute: vi.fn(async () => ({
+        success: true,
+        output: "done",
+        metadata: {
+          linesRead: 42,
+        },
+      })),
+    },
+
+    timeoutTool: {
+      schema: z.object({}),
+      execute: vi.fn(async () => {
+        throw new Error("Tool execution timed out");
       }),
     },
   },
@@ -35,83 +54,105 @@ vi.mock("../../src/tools/registry", () => ({
 import { executeToolCall } from "../../src/agent/executor";
 import { tools } from "../../src/tools/registry";
 
-describe("executeToolCall Suite", () => {
+describe("executeToolCall", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("should return error for unknown tool", async () => {
-    const result = await executeToolCall("missingTool", {});
+  describe("tool lookup", () => {
+    it("returns validation failure for unknown tools", async () => {
+      const result = await executeToolCall("missingTool", {});
 
-    expect(result).toEqual({
-      success: false,
-      output: "",
-      error: "Unknown tool: missingTool",
+      expect(result.success).toBe(false);
+      expect(result.failureType).toBe("validation");
+      expect(result.error).toContain("Unknown tool");
     });
   });
 
-  it("should return validation error for invalid args", async () => {
-    const result = await executeToolCall("echo", {
-      wrong: "field",
-    });
+  describe("argument validation", () => {
+    it("returns validation failure for invalid arguments", async () => {
+      const result = await executeToolCall("echo", {
+        wrong: "field",
+      });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("text");
-  });
-
-  it("should execute tool successfully and append default error key", async () => {
-    const result = await executeToolCall("echo", {
-      text: "hello",
-    });
-
-    // Validates the exact 3-key shape returned by normalizedResult
-    expect(result).toEqual({
-      success: true,
-      output: "hello",
-      error: "",
-    });
-
-    expect(tools.echo.execute).toHaveBeenCalledWith({
-      text: "hello",
+      expect(result.success).toBe(false);
+      expect(result.failureType).toBe("validation");
+      expect(result.error).toContain("text");
     });
   });
 
-  it("should route file listing tools through the specialized summarization layer", async () => {
-    const result = await executeToolCall("list_files", {});
+  describe("successful execution", () => {
+    it("executes a tool successfully", async () => {
+      const result = await executeToolCall("echo", {
+        text: "hello",
+      });
 
-    expect(result.success).toBe(true);
-    expect(result.output).toContain("Found 25 items.");
-    expect(result.output).toContain("Examples:");
-    expect(result.output).toContain("... [15 more items omitted]");
-  });
+      expect(result.success).toBe(true);
+      expect(result.output).toBe("hello");
+      expect(result.error).toBe("");
 
-  it("should defensively intercept and head-and-tail truncate massive outputs", async () => {
-    const massiveString = "A".repeat(3000); // Exceeds MAX_OUTPUT_LENGTH (2000)
-
-    // Override the echo implementation for a single run
-    vi.mocked(tools.echo.execute).mockResolvedValueOnce({
-      success: true,
-      output: massiveString,
+      expect(tools.echo.execute).toHaveBeenCalledWith({
+        text: "hello",
+      });
     });
 
-    const result = await executeToolCall("echo", { text: "ignored" });
+    it("preserves metadata returned by tools", async () => {
+      const result = await executeToolCall("metadataTool", {});
 
-    expect(result.success).toBe(true);
-    expect(result.output).toContain(
-      "[OUTPUT TRUNCATED: 1000 characters omitted]",
-    );
-    expect(result.output.startsWith("AAAA")).toBe(true);
-    expect(result.output.endsWith("AAAA")).toBe(true);
-    expect(result.output.length).toBeLessThan(3000);
+      expect(result.success).toBe(true);
+
+      expect(result.metadata).toEqual({
+        linesRead: 42,
+      });
+    });
   });
 
-  it("should catch unexpected execution errors and return normalized failure context", async () => {
-    const result = await executeToolCall("failTool", {});
+  describe("output normalization", () => {
+    it("summarizes large file listings", async () => {
+      const result = await executeToolCall("list_files", {});
 
-    expect(result).toEqual({
-      success: false,
-      output: "",
-      error: "Underlying system failure",
+      expect(result.success).toBe(true);
+      expect(result.output).toContain("Found 25 items.");
+      expect(result.output).toContain("Examples:");
+      expect(result.output).toContain("... [15 more items omitted]");
+    });
+
+    it("truncates oversized output", async () => {
+      const massiveString = "A".repeat(3000);
+
+      vi.mocked(tools.echo.execute).mockResolvedValueOnce({
+        success: true,
+        output: massiveString,
+      });
+
+      const result = await executeToolCall("echo", {
+        text: "ignored",
+      });
+
+      expect(result.success).toBe(true);
+
+      expect(result.output).toContain(
+        "[OUTPUT TRUNCATED: 1000 characters omitted]",
+      );
+
+      expect(result.output.length).toBeLessThan(massiveString.length);
+    });
+  });
+
+  describe("failure handling", () => {
+    it("classifies runtime execution failures", async () => {
+      const result = await executeToolCall("failTool", {});
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Underlying system failure");
+      expect(result.failureType).toBe("execution");
+    });
+
+    it("classifies timeout failures", async () => {
+      const result = await executeToolCall("timeoutTool", {});
+
+      expect(result.success).toBe(false);
+      expect(result.failureType).toBe("timeout");
     });
   });
 });

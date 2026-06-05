@@ -1,180 +1,202 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { runAgent } from "../../src/agent/loop";
 import { generateResponse } from "../../src/llm/client";
-import { parseAgentResponse } from "../../src/agent/parser";
 import { executeToolCall } from "../../src/agent/executor";
 
-// 1. Mock the boundary I/O layers
+// 1. Mock the LLM Client
 vi.mock("../../src/llm/client", () => ({
   generateResponse: vi.fn(),
 }));
 
-vi.mock("../../src/agent/parser", () => ({
-  parseAgentResponse: vi.fn(),
-}));
-
+// 2. Mock the Executor
 vi.mock("../../src/agent/executor", () => ({
   executeToolCall: vi.fn(),
 }));
 
-// 2. Mock the stateless context builder
-vi.mock("../../src/context/contextBuilder", () => ({
-  buildContext: vi.fn().mockReturnValue([]),
-}));
-
-// 3. Mock the Tool Registry to satisfy existence checks
-vi.mock("../../src/tools/registry", () => ({
-  tools: {
-    read_files: { schema: {} },
-    test_tool: { schema: {} },
-  },
-}));
-
-// 4. Silence the logger to keep test output clean
+// 3. Mock the Logger
 vi.mock("../../src/shared/logger", () => ({
   logger: {
-    // Top-level logger methods used by imported classes (like history.ts)
-    debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-    // Child logger methods used directly inside runAgent
-    child: vi.fn().mockReturnValue({
-      debug: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn(() => ({
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-    }),
+      debug: vi.fn(),
+    })),
   },
 }));
 
+// Custom Error to simulate the Phase 4 Circuit Breaker
+class ContextBudgetExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ContextBudgetExceededError";
+  }
+}
+
 describe("Agent Loop Orchestrator", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Reset call history and implementations to prevent bleed between tests
+    vi.resetAllMocks();
   });
 
   it("should return the final answer on a successful first iteration", async () => {
-    vi.mocked(generateResponse).mockResolvedValueOnce("raw text");
-    vi.mocked(parseAgentResponse).mockReturnValueOnce({
-      success: true,
-      data: { finalAnswer: "Task completed successfully!" },
+    // Parser expects "FINAL: " prefix for final answers
+    vi.mocked(generateResponse).mockResolvedValueOnce(
+      "FINAL: The sky is blue.",
+    );
+
+    const result = await runAgent("What color is the sky?");
+
+    expect(result).toEqual({
+      status: "completed",
+      finalAnswer: "The sky is blue.",
+      diagnostics: {
+        iterations: 1,
+        toolCalls: 0,
+        toolFailures: 0,
+        malformedResponses: 0,
+      },
     });
-
-    const result = await runAgent("Do the task");
-
-    expect(result).toBe("Task completed successfully!");
-    expect(generateResponse).toHaveBeenCalledTimes(1);
-    expect(executeToolCall).not.toHaveBeenCalled();
   });
 
   it("should gracefully halt when the Phase 4 Context Circuit Breaker trips", async () => {
-    // Create a custom error that matches the exact name checked by the loop
-    const budgetError = new Error("Too large");
-    budgetError.name = "ContextBudgetExceededError";
-
-    vi.mocked(generateResponse).mockRejectedValueOnce(budgetError);
-
-    const result = await runAgent("Read this massive file");
-
-    expect(result).toBe(
-      "Agent stopped: Context budget exceeded. Please refine your request or clear memory.",
+    vi.mocked(generateResponse).mockRejectedValueOnce(
+      new ContextBudgetExceededError("Context budget exceeded"),
     );
+
+    const result = await runAgent("A task that requires too much context");
+
+    expect(result).toEqual({
+      status: "context_budget_exceeded",
+      diagnostics: {
+        iterations: 1,
+        toolCalls: 0,
+        toolFailures: 0,
+        malformedResponses: 0,
+      },
+    });
   });
 
   it("should abort after 3 consecutive malformed parser outputs", async () => {
-    vi.mocked(generateResponse).mockResolvedValue("bad json");
-    vi.mocked(parseAgentResponse).mockReturnValue({
-      success: false,
-      error: "Invalid JSON format",
+    // Send 3 completely unparseable garbage strings
+    vi.mocked(generateResponse)
+      .mockResolvedValueOnce("Invalid string 1")
+      .mockResolvedValueOnce("Invalid string 2")
+      .mockResolvedValueOnce("Invalid string 3");
+
+    const result = await runAgent("Trigger parsing errors");
+
+    expect(result).toEqual({
+      status: "parse_failure",
+      diagnostics: {
+        iterations: 3,
+        toolCalls: 0,
+        toolFailures: 0,
+        malformedResponses: 3,
+      },
     });
-
-    const result = await runAgent("Do task");
-
-    expect(result).toBe("Agent stopped: too many malformed responses.");
-    // Verify it gave the LLM exactly 3 attempts to correct its syntax
-    expect(generateResponse).toHaveBeenCalledTimes(3);
   });
 
   it("should execute a tool, update memory, and resolve on the next iteration", async () => {
-    // Iteration 1: LLM calls a tool
-    vi.mocked(generateResponse).mockResolvedValueOnce("tool call JSON");
-    vi.mocked(parseAgentResponse).mockReturnValueOnce({
-      success: true,
-      data: {
-        toolCall: { tool: "read_files", args: { path: "src/app.ts" } },
-      },
-    });
+    // Iteration 1: Provide raw tool JSON
+    vi.mocked(generateResponse).mockResolvedValueOnce(
+      JSON.stringify({
+        tool: "read_files",
+        args: { paths: ["src/index.ts"] },
+      }),
+    );
+
+    // Executor succeeds
     vi.mocked(executeToolCall).mockResolvedValueOnce({
       success: true,
-      output: "file contents here",
+      output: "console.log('hello world');",
     });
 
-    // Iteration 2: LLM provides final answer
-    vi.mocked(generateResponse).mockResolvedValueOnce("final answer JSON");
-    vi.mocked(parseAgentResponse).mockReturnValueOnce({
-      success: true,
-      data: { finalAnswer: "I read the file." },
+    // Iteration 2: Provide valid FINAL answer
+    vi.mocked(generateResponse).mockResolvedValueOnce(
+      "FINAL: The file prints hello world.",
+    );
+
+    const result = await runAgent("What does index.ts do?");
+
+    expect(result).toEqual({
+      status: "completed",
+      finalAnswer: "The file prints hello world.",
+      diagnostics: {
+        iterations: 2,
+        toolCalls: 1,
+        toolFailures: 0,
+        malformedResponses: 0,
+      },
     });
 
-    const result = await runAgent("Read app.ts");
-
-    expect(result).toBe("I read the file.");
     expect(executeToolCall).toHaveBeenCalledWith("read_files", {
-      path: "src/app.ts",
+      paths: ["src/index.ts"],
     });
-    expect(generateResponse).toHaveBeenCalledTimes(2);
   });
 
-  it("should trigger the Phase 5 Loop Guard if the agent repeats the exact same tool call", async () => {
-    // Mock the LLM returning the EXACT same tool call forever
-    vi.mocked(generateResponse).mockResolvedValue("repeat call");
-    vi.mocked(parseAgentResponse).mockReturnValue({
+  it("should intercept repeated tool calls and eventually hit MAX_ITERATIONS safely", async () => {
+    // LLM stubbornly repeats the exact same tool call
+    vi.mocked(generateResponse).mockImplementation(() =>
+      Promise.resolve(
+        JSON.stringify({
+          tool: "echo",
+          args: { text: "stuck in a loop" },
+        }),
+      ),
+    );
+
+    vi.mocked(executeToolCall).mockResolvedValue({
       success: true,
-      data: {
-        toolCall: { tool: "test_tool", args: { query: "hello" } },
+      output: "stuck in a loop",
+    });
+
+    const result = await runAgent("Trigger infinite loop");
+
+    expect(result).toEqual({
+      status: "max_iterations",
+      diagnostics: {
+        iterations: 10,
+        toolCalls: 1, // Proof that LoopGuard blocked the 9 identical attempts
+        toolFailures: 0,
+        malformedResponses: 0,
       },
+    });
+  });
+
+  it("should abort if it hits the MAX_ITERATIONS limit with dynamic actions", async () => {
+    let callCount = 0;
+
+    // LLM provides uniquely valid tool calls to bypass the repetition guard
+    vi.mocked(generateResponse).mockImplementation(() => {
+      callCount++;
+      return Promise.resolve(
+        JSON.stringify({
+          tool: "echo",
+          args: { text: `dynamic call ${callCount}` },
+        }),
+      );
     });
 
     vi.mocked(executeToolCall).mockResolvedValue({
       success: true,
-      output: "result",
+      output: "success",
     });
 
-    const result = await runAgent("Start loop");
+    const result = await runAgent("Do 10 different things");
 
-    // Iteration 1: Executes normally.
-    // Iteration 2: Loop Guard physically intercepts it and breaks the agent.
-    expect(result).toBe(
-      "Agent stopped: repeating tool call detected (test_tool).",
-    );
-    expect(executeToolCall).toHaveBeenCalledTimes(1);
-    expect(generateResponse).toHaveBeenCalledTimes(2);
-  });
-
-  it("should abort if it hits the MAX_ITERATIONS limit", async () => {
-    vi.mocked(generateResponse).mockResolvedValue("unknown tool request");
-
-    // Returning a non-existent tool bypasses the loop guard and executor,
-    // guaranteeing the loop spins rapidly without failing on other internal checks.
-    vi.mocked(parseAgentResponse).mockReturnValue({
-      success: true,
-      data: {
-        // Change the args dynamically using a counter so the Loop Guard doesn't trigger
-        toolCall: { tool: "missingTool", args: {} },
+    expect(result).toEqual({
+      status: "max_iterations",
+      diagnostics: {
+        iterations: 10,
+        toolCalls: 10, // All 10 went through
+        toolFailures: 0,
+        malformedResponses: 0,
       },
     });
-
-    let counter = 0;
-    vi.mocked(parseAgentResponse).mockImplementation(() => ({
-      success: true,
-      data: {
-        toolCall: { tool: "missingTool", args: { id: ++counter } },
-      },
-    }));
-
-    const result = await runAgent("Do impossible task");
-
-    expect(result).toBe("Agent stopped: max iterations reached.");
-    expect(generateResponse).toHaveBeenCalledTimes(10); // MAX_ITERATIONS
   });
 });

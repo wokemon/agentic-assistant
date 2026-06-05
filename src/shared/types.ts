@@ -53,10 +53,20 @@ export interface AgentResult {
    Tool Runtime Types
 ========================= */
 
+export type FailureType =
+  | "not_found"
+  | "validation"
+  | "permission"
+  | "timeout"
+  | "execution"
+  | "safety"
+  | "unknown";
+
 export interface ToolResult {
   success: boolean;
   output: string;
   error?: string;
+  failureType?: FailureType;
   metadata?: Record<string, unknown>;
 }
 

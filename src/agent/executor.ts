@@ -3,18 +3,14 @@ import { logger } from "../shared/logger";
 import { CommandPolicy } from "../safety/commandPolicy";
 import { PathValidation } from "../safety/pathValidation";
 import { SafetyBlockedError } from "../safety/errors";
+import type { FailureType } from "../shared/types";
+import type { ToolResult } from "../shared/types";
 
 const TOOL_TIMEOUT_MS = 10_000;
 
 // Phase 4: Defensive Context Management Thresholds
 // Note: Keeping as characters for the MVP to avoid tokenizer overhead.
 const MAX_OUTPUT_LENGTH = 2000;
-
-export interface ToolResult {
-  success: boolean;
-  output: string;
-  error?: string;
-}
 
 // 1. Standard Head-and-Tail Truncation (Fallback)
 function truncateOutput(text: string | undefined, toolName: string): string {
@@ -71,6 +67,28 @@ function normalizeOutput(text: string | undefined, toolName: string): string {
   return truncateOutput(text, toolName);
 }
 
+function classifyError(error: unknown): FailureType {
+  if (!(error instanceof Error)) {
+    return "unknown";
+  }
+
+  const message = error.message.toLowerCase();
+
+  if (message.includes("enoent")) {
+    return "not_found";
+  }
+
+  if (message.includes("eacces") || message.includes("permission denied")) {
+    return "permission";
+  }
+
+  if (message.includes("timed out") || message.includes("timeout")) {
+    return "timeout";
+  }
+
+  return "execution";
+}
+
 export async function executeToolCall(
   toolName: string,
   rawArgs: unknown,
@@ -91,6 +109,7 @@ Available tools:
 ${availableTools}
 
 Choose one of the available tools.`,
+      failureType: "validation",
     };
   }
 
@@ -101,7 +120,12 @@ Choose one of the available tools.`,
       { tool: toolName, issues: parsed.error.issues },
       "Tool argument validation failed",
     );
-    return { success: false, output: "", error: parsed.error.message };
+    return {
+      success: false,
+      output: "",
+      error: parsed.error.message,
+      failureType: "validation",
+    };
   }
 
   try {
@@ -150,6 +174,7 @@ Choose one of the available tools.`,
         success: false,
         output: "",
         error: error.message,
+        failureType: "safety",
       };
     }
     throw error;
@@ -178,6 +203,8 @@ Choose one of the available tools.`,
       success: result.success,
       output: normalizeOutput(result.output, toolName),
       error: truncateOutput(result.error, toolName),
+      failureType: result.failureType,
+      metadata: result.metadata,
     };
 
     logger.info(
@@ -206,6 +233,7 @@ Choose one of the available tools.`,
       success: false,
       output: "",
       error: truncateOutput(rawErrorMessage, toolName),
+      failureType: classifyError(error),
     };
   }
 }

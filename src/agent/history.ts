@@ -16,7 +16,7 @@ export class MessageHistory {
   }
 
   getAll(): Message[] {
-    return this.messages;
+    return [...this.messages];
   }
 
   clear() {

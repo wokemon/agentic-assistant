@@ -28,7 +28,7 @@ export const runTestsTool = {
     try {
       // 1. Force RUN mode. Never allow watch mode or the agent will hang.
       // We use 'npx vitest run' instead of 'npm test' to guarantee it exits.
-      let cmd = "npx vitest run";
+      let cmd = "pnpm vitest run";
 
       // 2. Target specific files to save tokens and time
       if (args.testFile) {

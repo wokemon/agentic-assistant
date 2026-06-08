@@ -7,6 +7,7 @@ import { terminalTool } from "./filesystem/terminals";
 import { readFileLinesTool } from "./filesystem/readFileLines";
 import { searchFilesTool } from "./filesystem/searchFiles";
 import { gitStatusTool } from "./git/status";
+import { gitDiffTool } from "./git/diff";
 
 export const tools: Record<string, ToolDefinition<any>> = {
   [listFilesTool.name]: listFilesTool,
@@ -16,4 +17,5 @@ export const tools: Record<string, ToolDefinition<any>> = {
   [readFileLinesTool.name]: readFileLinesTool,
   [searchFilesTool.name]: searchFilesTool,
   [gitStatusTool.name]: gitStatusTool,
+  [gitDiffTool.name]: gitDiffTool,
 };

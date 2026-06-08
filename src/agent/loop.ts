@@ -11,6 +11,32 @@ import { buildContext } from "../context/contextBuilder";
 
 const MAX_ITERATIONS = 10;
 
+function requiresVerification(userInput: string): boolean {
+  const text = userInput.toLowerCase();
+
+  return [
+    "regression",
+    "regressions",
+    "break",
+    "broken",
+    "verify",
+    "verification",
+    "test",
+    "tests",
+    "build",
+    "compile",
+    "compiled",
+    "working",
+    "still work",
+  ].some((keyword) => text.includes(keyword));
+}
+
+function claimsExecution(text: string): boolean {
+  return /\b(ran|executed|tested|built|compiled|verified)\b/i.test(text);
+}
+
+const VERIFICATION_TOOLS = new Set(["run_tests", "build_project"]);
+
 export async function runAgent(userInput: string): Promise<AgentResult> {
   const sessionId = crypto.randomUUID();
   const agentLogger = logger.child({ component: "agent_loop", sessionId });
@@ -24,6 +50,7 @@ export async function runAgent(userInput: string): Promise<AgentResult> {
   const memory = new WorkingMemory();
 
   let malformedCount = 0;
+  let verificationPerformed = false;
 
   const diagnostics = {
     iterations: 0,
@@ -103,11 +130,73 @@ export async function runAgent(userInput: string): Promise<AgentResult> {
     const response = parsed.data;
 
     if (response.finalAnswer) {
-      // P1-3: Missing Final Logging
+      const needsVerification = requiresVerification(userInput);
+
+      if (needsVerification && !verificationPerformed) {
+        agentLogger.warn(
+          {
+            finalAnswer: response.finalAnswer,
+          },
+          "Verification claim rejected due to lack of evidence",
+        );
+
+        history.add(
+          "system",
+          `
+Your answer requires repository verification.
+
+You have not yet executed any verification tools.
+
+Use available tools such as:
+
+- run_tests
+- build_project
+
+Gather evidence before returning FINAL.
+`,
+        );
+
+        continue;
+      }
+
+      if (
+        claimsExecution(response.finalAnswer) &&
+        diagnostics.toolCalls === 0
+      ) {
+        agentLogger.warn(
+          {
+            finalAnswer: response.finalAnswer,
+          },
+          "Execution claim rejected because no tools were used",
+        );
+
+        history.add(
+          "system",
+          `
+You claimed to execute an action.
+
+No tools have been executed.
+
+Do not claim:
+- tests were run
+- builds succeeded
+- commands executed
+
+unless tool output confirms it.
+`,
+        );
+
+        continue;
+      }
+
       agentLogger.info(
-        { iterations: iteration + 1, finalAnswer: response.finalAnswer },
+        {
+          iterations: iteration + 1,
+          finalAnswer: response.finalAnswer,
+        },
         "Agent completed successfully",
       );
+
       return {
         status: "completed",
         finalAnswer: response.finalAnswer,
@@ -117,6 +206,9 @@ export async function runAgent(userInput: string): Promise<AgentResult> {
 
     if (response.toolCall) {
       const { tool: toolName, args } = response.toolCall;
+      if (VERIFICATION_TOOLS.has(toolName)) {
+        verificationPerformed = true;
+      }
 
       if (loopGuard.isRepeating(toolName, args)) {
         history.add(

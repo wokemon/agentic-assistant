@@ -1,22 +1,60 @@
 # Agentic Assistant
 
-A TypeScript AI coding agent MVP that leverages LLMs to autonomously execute file system operations through a tool-based architecture.
+A TypeScript-based AI coding agent that autonomously investigates, modifies, and validates codebases through a structured tool-execution architecture.
 
 ## Features
 
-- 🤖 LLM-powered autonomous agent with structured tool calling
-- 📁 File system tools: list, read, and write files
-- 🔒 Built-in safety features (loop guard, timeout protection)
-- 📊 Comprehensive logging with Pino
-- 🧪 Full test coverage with Vitest
-- ⚡ Fast development with Tsx
+- 🤖 LLM-powered agent with multi-step reasoning loop
+- 🔧 Structured tool-calling system
+- 📁 File system operations
+  - List files
+  - Read files
+  - Write files
+
+- 🧠 Working memory and conversation history management
+- ⚙️ Execution middleware for validation, logging, and tool orchestration
+- 🛡️ Built-in safety mechanisms
+  - Loop detection
+  - Timeout protection
+  - Path validation
+  - Malformed response handling
+
+- 📊 Structured diagnostics and observability
+- 🧪 Automated testing with Vitest
+- 📝 Comprehensive logging with Pino
+- ⚡ TypeScript-first architecture
+
+---
+
+## Project Status
+
+Current MVP supports:
+
+- Autonomous tool usage
+- Multi-step reasoning
+- Repository investigation workflows
+- Safe file modification
+- Structured agent execution
+
+Planned next capabilities:
+
+- Git integration
+  - git status
+  - git diff
+
+- Test execution
+- Build execution
+- Context summarization
+- Web UI
+
+---
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 18+
-- pnpm 11.0.9+
+- pnpm
 
 ### Installation
 
@@ -31,55 +69,103 @@ Create a `.env` file in the project root:
 ```env
 OPENAI_API_KEY=your_api_key_here
 OPENAI_BASE_URL=https://api.openai.com/v1
-MODEL=gpt-4-turbo
+MODEL=qwen/qwen3-coder:free
 ```
 
-**Environment Variables:**
+### Environment Variables
 
-- `OPENAI_API_KEY` (required): Your OpenAI/OpenRouter API key
-- `OPENAI_BASE_URL` (optional): Custom API endpoint (defaults to OpenAI)
-- `MODEL` (optional): Model to use (defaults to `qwen/qwen3-coder:free`)
+| Variable        | Required | Description                       |
+| --------------- | -------- | --------------------------------- |
+| OPENAI_API_KEY  | Yes      | API key for model provider        |
+| OPENAI_BASE_URL | No       | Custom OpenAI-compatible endpoint |
+| MODEL           | No       | Model identifier                  |
 
-### Running the Agent
+---
 
-Start the interactive CLI:
+## Running the Agent
+
+Development mode:
 
 ```bash
 pnpm dev
 ```
 
-Then enter your task:
+Example tasks:
 
-```
-> List all TypeScript files in the src directory
+```text
+List all TypeScript files in src
+
+Analyze this repository structure
+
+Find potential dead code
+
+Read package.json and summarize the project
+
+Investigate why the build is failing
 ```
 
-### Building for Production
+---
+
+## Building
 
 ```bash
 pnpm build
 ```
 
-Output will be in the `dist/` directory.
+Output:
+
+```text
+dist/
+```
+
+---
+
+## Running Tests
+
+Run all tests:
+
+```bash
+pnpm test
+```
+
+Watch mode:
+
+```bash
+pnpm test -- --watch
+```
+
+Coverage:
+
+```bash
+pnpm test -- --coverage
+```
+
+---
 
 ## Available Tools
 
-The agent can use the following tools:
-
 ### list_files
 
-List files in a directory.
+Lists files and directories.
+
+Example:
 
 ```json
 {
   "tool": "list_files",
-  "args": { "path": "./src" }
+  "args": {
+    "path": "./src"
+  }
 }
 ```
 
+---
+
 ### read_files
 
-Read one or multiple files with optional preview mode.
+Reads one or more files.
+
+Example:
 
 ```json
 {
@@ -91,9 +177,13 @@ Read one or multiple files with optional preview mode.
 }
 ```
 
+---
+
 ### write_files
 
-Write content to one or multiple files.
+Writes content to files.
+
+Example:
 
 ```json
 {
@@ -102,61 +192,162 @@ Write content to one or multiple files.
     "files": [
       {
         "path": "output.txt",
-        "content": "Hello, World!"
+        "content": "Hello World"
       }
     ]
   }
 }
 ```
 
+---
+
+### Planned Tools
+
+- git_status
+- git_diff
+- run_tests
+- run_build
+- grep_search
+
+---
+
 ## Architecture
 
-```
+```text
 src/
-├── agent/          # Agent loop, parsing, execution logic
-├── cli/            # Command-line interface
-├── llm/            # LLM client configuration
-├── shared/         # Types and logger
-├── tools/          # Tool implementations and registry
-└── safety/         # Safety guards (loop detection, timeouts)
+├── agent/
+│   ├── loop.ts
+│   ├── executor.ts
+│   ├── parser.ts
+│   ├── history.ts
+│   └── state.ts
+│
+├── tools/
+│   ├── filesystem/
+│   ├── schemas/
+│   └── registry.ts
+│
+├── context/
+│   └── workingMemory.ts
+│
+├── llm/
+│   └── client.ts
+│
+├── safety/
+│   ├── loopGuards.ts
+│   └── pathValidation.ts
+│
+├── shared/
+│   ├── logger.ts
+│   └── types.ts
+│
+└── cli/
 ```
 
-## Running Tests
-
-```bash
-pnpm test
-```
-
-Run tests in watch mode:
-
-```bash
-pnpm test -- --watch
-```
-
-## Development
-
-```bash
-pnpm dev
-```
-
-Runs the agent in development mode with Tsx (no compilation needed).
+---
 
 ## How It Works
 
-1. **User Input**: User provides a task via the CLI
-2. **Agent Loop**: The agent iterates up to 5 times:
-   - Generates a response using the LLM
-   - Parses tool calls or final answers
-   - Executes requested tools
-   - Feeds results back to the LLM
-3. **Final Answer**: Agent returns result or stops if max iterations exceeded
+### Agent Loop
 
-### Safety Features
+```text
+User Request
+      ↓
+Generate Response
+      ↓
+Parse Tool Call
+      ↓
+Validate Request
+      ↓
+Execute Tool
+      ↓
+Observe Result
+      ↓
+Repeat
+      ↓
+Final Answer
+```
 
-- **Loop Guard**: Detects and prevents repeated tool calls
-- **Timeout Protection**: Tools have a 10-second execution timeout
-- **Malformed Response Handling**: Retries up to 3 times if response parsing fails
-- **Max Iterations**: Agent stops after 5 iterations to prevent infinite loops
+The agent follows a reasoning-action-observation cycle until:
+
+- A final answer is produced
+- Maximum iterations are reached
+- A safety guard terminates execution
+
+---
+
+## Safety Features
+
+### Loop Guard
+
+Prevents repetitive tool-call cycles.
+
+### Timeout Protection
+
+Tool execution is automatically terminated after configured limits.
+
+### Structured Parsing
+
+All model responses pass through schema validation.
+
+### Tool Validation
+
+Tool inputs are validated before execution.
+
+### Execution Boundary
+
+All tool execution flows through a centralized executor responsible for:
+
+- Validation
+- Logging
+- Error normalization
+- Safety enforcement
+
+---
+
+## Diagnostics
+
+Agent runs return structured metadata including:
+
+- Iteration count
+- Tool call count
+- Tool failures
+- Parsing failures
+
+This improves debugging, testing, and future observability.
+
+---
+
+## Development Roadmap
+
+### Phase 1 (Completed)
+
+- Agent loop
+- Tool calling
+- File operations
+- Safety guards
+
+### Phase 2 (Current)
+
+- Executor abstraction
+- Structured agent results
+- Context management
+- Test coverage
+
+### Phase 3
+
+- Git tools
+- Build execution
+- Test execution
+- Repository analysis improvements
+
+### Phase 4
+
+- Web UI
+- Streaming updates
+- Session persistence
+
+---
 
 ## License
 

@@ -67,5 +67,13 @@ export class WorkingMemory {
     this.facts.clear();
     this.openedFiles = [];
     this.summaries = [];
+  
+
+  hasOpenedFile(path: string): boolean {
+    return this.openedFiles.has(path);
+  }
+
+  getOpenedFiles(): string[] {
+    return [...this.openedFiles];
   }
 }

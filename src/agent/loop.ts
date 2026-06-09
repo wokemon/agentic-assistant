@@ -60,6 +60,12 @@ function claimsExecution(text: string): boolean {
   return /\b(ran|executed|tested|built|compiled|verified)\b/i.test(text);
 }
 
+function extractRequestedFile(userInput: string): string | null {
+  const match = userInput.match(/\b[\w.-]+\.(ts|tsx|js|jsx|json|md)\b/i);
+
+  return match?.[0] ?? null;
+}
+
 const VERIFICATION_TOOLS = new Set(["run_tests", "build_project"]);
 
 export async function runAgent(userInput: string): Promise<AgentResult> {
@@ -118,6 +124,36 @@ export async function runAgent(userInput: string): Promise<AgentResult> {
     if (!parsed.success) {
       malformedCount++;
       diagnostics.malformedResponses++;
+
+      const requestedFile = extractRequestedFile(userInput);
+
+      if (
+        requestedFile &&
+        diagnostics.toolCalls > 0 &&
+        !memory.hasOpenedFile(requestedFile)
+      ) {
+        agentLogger.warn(
+          {
+            requestedFile,
+          },
+          "Requested file was never read",
+        );
+
+        history.add(
+          "system",
+          `
+The user explicitly requested analysis of:
+
+${requestedFile}
+
+You have not read that file yet.
+
+Locate and read the file before answering.
+`,
+        );
+
+        continue;
+      }
 
       loopGuard.trackParseFailure();
       agentLogger.warn(
@@ -285,8 +321,14 @@ unless tool output confirms it.
       loopGuard.addAction(toolName, args);
 
       // Populate Working Memory passively:
-      if (toolName === "read_file_lines" || toolName === "read_files") {
-        memory.addOpenedFile(args.path || args.paths?.[0]);
+      if (toolName === "read_files") {
+        for (const path of args.paths ?? []) {
+          memory.addOpenedFile(path);
+        }
+      }
+
+      if (toolName === "read_file_lines") {
+        memory.addOpenedFile(args.path);
       }
 
       diagnostics.toolCalls++;

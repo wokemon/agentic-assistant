@@ -67,10 +67,10 @@ export class WorkingMemory {
     this.facts.clear();
     this.openedFiles = [];
     this.summaries = [];
-  
+  }
 
   hasOpenedFile(path: string): boolean {
-    return this.openedFiles.has(path);
+    return this.openedFiles.includes(path);
   }
 
   getOpenedFiles(): string[] {

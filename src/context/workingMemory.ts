@@ -1,3 +1,8 @@
+export interface OpenFile {
+  path: string;
+  reason?: string;
+}
+
 export class WorkingMemory {
   // Memory self-governs its own caps to prevent infinite context growth
   private readonly MAX_FACTS = 20;
@@ -5,8 +10,8 @@ export class WorkingMemory {
   private readonly MAX_SUMMARIES = 10;
 
   private facts: Set<string> = new Set();
-  // Converted to an Array to explicitly support 'bounded recency'
-  private openedFiles: string[] = [];
+  // Converted to structured objects to explicitly support intent-tracking
+  private openedFiles: OpenFile[] = [];
   private summaries: string[] = [];
 
   // Store persistent knowledge, dropping the oldest if capacity is reached
@@ -27,16 +32,17 @@ export class WorkingMemory {
   }
 
   // Track file context defensively, prioritizing the most recent files
-  addOpenedFile(filePath?: string) {
-    if (!filePath) return;
+  addOpenedFile(path?: string, reason?: string) {
+    if (!path) return;
 
     // Deduplicate: If we already opened it, remove it so we can re-add it to the end (most recent)
-    const existingIndex = this.openedFiles.indexOf(filePath);
+    // This also updates its reason to the latest context
+    const existingIndex = this.openedFiles.findIndex((f) => f.path === path);
     if (existingIndex !== -1) {
       this.openedFiles.splice(existingIndex, 1);
     }
 
-    this.openedFiles.push(filePath);
+    this.openedFiles.push({ path, reason });
 
     // Prune the oldest opened file if we exceed the budget
     if (this.openedFiles.length > this.MAX_OPEN_FILES) {
@@ -70,10 +76,10 @@ export class WorkingMemory {
   }
 
   hasOpenedFile(path: string): boolean {
-    return this.openedFiles.includes(path);
+    return this.openedFiles.some((f) => f.path === path);
   }
 
-  getOpenedFiles(): string[] {
+  getOpenedFiles(): OpenFile[] {
     return [...this.openedFiles];
   }
 }

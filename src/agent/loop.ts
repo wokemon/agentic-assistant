@@ -31,6 +31,31 @@ function requiresVerification(userInput: string): boolean {
   ].some((keyword) => text.includes(keyword));
 }
 
+function requiresRepositoryInspection(userInput: string): boolean {
+  const text = userInput.toLowerCase();
+
+  return [
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".json",
+    "file",
+    "class",
+    "function",
+    "method",
+    "implementation",
+    "code",
+    "repository",
+    "repo",
+    "review",
+    "analyze",
+    "inspect",
+    "locate",
+    "find",
+  ].some((keyword) => text.includes(keyword));
+}
+
 function claimsExecution(text: string): boolean {
   return /\b(ran|executed|tested|built|compiled|verified)\b/i.test(text);
 }
@@ -131,6 +156,37 @@ export async function runAgent(userInput: string): Promise<AgentResult> {
 
     if (response.finalAnswer) {
       const needsVerification = requiresVerification(userInput);
+
+      if (
+        requiresRepositoryInspection(userInput) &&
+        diagnostics.toolCalls === 0
+      ) {
+        agentLogger.warn(
+          {
+            finalAnswer: response.finalAnswer,
+          },
+          "Repository answer rejected due to lack of evidence",
+        );
+
+        history.add(
+          "system",
+          `
+Your answer requires repository evidence.
+
+You have not inspected the repository.
+
+Before returning FINAL:
+
+1. Use tools to inspect the repository.
+2. Gather evidence.
+3. Then answer.
+
+Do not answer from assumptions.
+`,
+        );
+
+        continue;
+      }
 
       if (needsVerification && !verificationPerformed) {
         agentLogger.warn(

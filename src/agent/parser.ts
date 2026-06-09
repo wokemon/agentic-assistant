@@ -1,17 +1,20 @@
 import { z } from "zod";
 import { logger } from "../shared/logger";
 
-const toolCallSchema = z.object({
-  tool: z.string(),
-  args: z.record(z.string(), z.any()),
-});
+// 1. Define the strict dual-mode schema using a Zod Union
+export const AgentResponseSchema = z.union([
+  z.object({
+    toolCall: z.object({
+      tool: z.string(),
+      args: z.record(z.string(), z.any()),
+    }),
+  }),
+  z.object({
+    finalAnswer: z.string().min(1),
+  }),
+]);
 
-const agentResponseSchema = z.object({
-  toolCall: toolCallSchema.optional(),
-  finalAnswer: z.string().min(1).optional(),
-});
-
-export type AgentResponse = z.infer<typeof agentResponseSchema>;
+export type AgentResponse = z.infer<typeof AgentResponseSchema>;
 
 type ParseResult =
   | {
@@ -62,125 +65,58 @@ export function parseAgentResponse(response: string): ParseResult {
 
   response = response.trim();
 
-  // ----------------------------
-  // FINAL ANSWER MODE
-  // ----------------------------
+  // 1. Safely extract JSON, bypassing conversational filler or Markdown blocks
+  const jsonText = extractJsonObject(response);
 
-  const finalMatch = response.match(/^FINAL:\s*([\s\S]*)/m);
+  if (!jsonText) {
+    logger.warn(
+      {
+        response,
+      },
+      "No JSON object found in response",
+    );
 
-  if (finalMatch) {
-    logger.debug("Detected final answer response");
+    return {
+      success: false,
+      error: "No JSON object found. You must return valid JSON.",
+    };
+  }
 
-    const finalAnswer = finalMatch[1]?.trim();
+  try {
+    // 2. Parse the extracted text into an unknown object
+    const parsedJson = JSON.parse(jsonText);
 
-    const validated = agentResponseSchema.safeParse({
-      finalAnswer,
-    });
+    logger.debug(
+      {
+        parsedJson,
+      },
+      "Parsed extracted JSON object",
+    );
+
+    // 3. Validate against the strict Union Schema
+    const validated = AgentResponseSchema.safeParse(parsedJson);
 
     if (!validated.success) {
       logger.warn(
         {
+          parsedJson,
           issues: validated.error.issues,
         },
-        "Final answer validation failed",
+        "Agent response schema validation failed",
       );
 
+      // Return exact Zod errors so the LLM knows what to fix in the next iteration
       return {
         success: false,
-        error: validated.error.message,
+        error: `Invalid JSON structure: ${JSON.stringify(validated.error.issues)}`,
       };
     }
 
-    logger.info("Final answer parsed successfully");
+    logger.info("Agent response parsed successfully");
 
     return {
       success: true,
       data: validated.data,
-    };
-  }
-
-  // ----------------------------
-  // TOOL CALL MODE
-  // ----------------------------
-
-  try {
-    logger.debug("Attempting tool call parsing");
-
-    let parsed: unknown;
-
-    // ------------------------------------
-    // Primary Path: Strict JSON Response
-    // ------------------------------------
-
-    try {
-      parsed = JSON.parse(response);
-
-      logger.debug(
-        {
-          parsed,
-        },
-        "Parsed response as strict JSON",
-      );
-    } catch {
-      // ------------------------------------
-      // Fallback: Extract JSON from text
-      // ------------------------------------
-
-      const jsonText = extractJsonObject(response);
-
-      if (!jsonText) {
-        logger.warn(
-          {
-            response,
-          },
-          "No JSON object found in response",
-        );
-
-        return {
-          success: false,
-          error: "No JSON object found.",
-        };
-      }
-
-      parsed = JSON.parse(jsonText);
-
-      logger.debug(
-        {
-          parsed,
-        },
-        "Parsed extracted JSON object",
-      );
-    }
-
-    const validated = toolCallSchema.safeParse(parsed);
-
-    if (!validated.success) {
-      logger.warn(
-        {
-          parsed,
-          issues: validated.error.issues,
-        },
-        "Tool call validation failed",
-      );
-
-      return {
-        success: false,
-        error: validated.error.message,
-      };
-    }
-
-    logger.info(
-      {
-        tool: validated.data.tool,
-      },
-      "Tool call parsed successfully",
-    );
-
-    return {
-      success: true,
-      data: {
-        toolCall: validated.data,
-      },
     };
   } catch (error) {
     logger.error(

@@ -37,6 +37,7 @@ export type AgentStatus =
   | "context_budget_exceeded";
 
 export interface AgentDiagnostics {
+  sessionId: string;
   iterations: number;
   toolCalls: number;
   toolFailures: number;

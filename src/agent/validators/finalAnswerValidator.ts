@@ -1,5 +1,5 @@
-import { WorkingMemory } from "../context/workingMemory";
-import { AgentState } from "./state";
+import { WorkingMemory } from "../../context/workingMemory";
+import { AgentState } from "../state";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

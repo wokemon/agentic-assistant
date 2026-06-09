@@ -1,6 +1,7 @@
 export interface OpenFile {
   path: string;
   reason?: string;
+  truncated?: boolean;
 }
 
 export class WorkingMemory {
@@ -32,17 +33,17 @@ export class WorkingMemory {
   }
 
   // Track file context defensively, prioritizing the most recent files
-  addOpenedFile(path?: string, reason?: string) {
+  addOpenedFile(path?: string, reason?: string, truncated = false) {
     if (!path) return;
 
     // Deduplicate: If we already opened it, remove it so we can re-add it to the end (most recent)
-    // This also updates its reason to the latest context
+    // This also updates its reason and truncation status to the latest read
     const existingIndex = this.openedFiles.findIndex((f) => f.path === path);
     if (existingIndex !== -1) {
       this.openedFiles.splice(existingIndex, 1);
     }
 
-    this.openedFiles.push({ path, reason });
+    this.openedFiles.push({ path, reason, truncated });
 
     // Prune the oldest opened file if we exceed the budget
     if (this.openedFiles.length > this.MAX_OPEN_FILES) {
@@ -77,6 +78,13 @@ export class WorkingMemory {
 
   hasOpenedFile(path: string): boolean {
     return this.openedFiles.some((f) => f.path === path);
+  }
+
+  wasReadTruncated(path: string | undefined): boolean {
+    if (!path) return false;
+    return this.openedFiles.some(
+      (f) => f.path === path && f.truncated === true,
+    );
   }
 
   getOpenedFiles(): OpenFile[] {

@@ -89,6 +89,57 @@ function classifyError(error: unknown): FailureType {
   return "execution";
 }
 
+function buildValidationError(
+  toolName: string,
+  rawArgs: unknown,
+  issues: { path: PropertyKey[]; message: string }[],
+): string {
+  // Describe each field problem in plain terms the model can act on
+  const fieldErrors = issues
+    .map((issue) => {
+      const field =
+        issue.path.length > 0 ? issue.path.map(String).join(".") : "(root)";
+      return `  - ${field}: ${issue.message}`;
+    })
+    .join("\n");
+
+  // Pull the expected shape from the tool's schema so the model sees
+  // exactly what to send next, without having to guess.
+  const tool = tools[toolName];
+  let expectedShape = "(schema unavailable)";
+  try {
+    // Zod schemas expose _def.shape() on ZodObject — best-effort only.
+    const shape = (tool.schema as any)._def?.shape?.();
+    if (shape) {
+      expectedShape = Object.entries(shape)
+        .map(([key, val]: [string, any]) => {
+          const typeName: string = val?._def?.typeName ?? "unknown";
+          const optional: boolean = typeName === "ZodOptional";
+          const innerType: string = optional
+            ? (val._def?.innerType?._def?.typeName ?? "unknown")
+            : typeName;
+          return `  ${key}${optional ? "?" : ""}: ${innerType.replace("Zod", "").toLowerCase()}`;
+        })
+        .join("\n");
+    }
+  } catch {
+    // Silently fall back — schema introspection is best-effort
+  }
+
+  return `Invalid arguments for tool '${toolName}'.
+
+Field errors:
+${fieldErrors}
+
+Expected schema:
+${expectedShape}
+
+You sent:
+${JSON.stringify(rawArgs, null, 2)}
+
+Fix the arguments and call '${toolName}' again.`;
+}
+
 export async function executeToolCall(
   toolName: string,
   rawArgs: unknown,
@@ -116,14 +167,17 @@ Choose one of the available tools.`,
   const parsed = tool.schema.safeParse(rawArgs);
 
   if (!parsed.success) {
+    const error = buildValidationError(toolName, rawArgs, parsed.error.issues);
+
     logger.warn(
       { tool: toolName, issues: parsed.error.issues },
       "Tool argument validation failed",
     );
+
     return {
       success: false,
       output: "",
-      error: parsed.error.message,
+      error,
       failureType: "validation",
     };
   }

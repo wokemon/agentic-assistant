@@ -198,12 +198,7 @@ Locate and read the file before answering.
 
     const response = parsed.data;
 
-    // Architectural Fix 1: Stop Storing Raw Assistant JSON
-    if ("toolCall" in response) {
-      history.add("assistant", `Tool selected: ${response.toolCall.tool}`);
-    } else if ("finalAnswer" in response) {
-      history.add("assistant", "Final answer generated");
-    }
+    history.add("assistant", rawResponse);
 
     if ("finalAnswer" in response) {
       const needsVerification = requiresVerification(userInput);

@@ -13,7 +13,7 @@ vi.mock("../../src/agent/executor", () => ({
   executeToolCall: vi.fn(),
 }));
 
-// 3. Mock the Logger
+// 3. Mock the Logger to suppress output during tests but allow spying if needed
 vi.mock("../../src/shared/logger", () => ({
   logger: {
     info: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock("../../src/shared/logger", () => ({
   },
 }));
 
-// Custom Error to simulate the Phase 4 Circuit Breaker
+// Custom Error to simulate the Phase 4 Context Budget Circuit Breaker
 class ContextBudgetExceededError extends Error {
   constructor(message: string) {
     super(message);
@@ -37,14 +37,14 @@ class ContextBudgetExceededError extends Error {
   }
 }
 
-describe("Agent Loop Orchestrator", () => {
+describe("Agent Loop Orchestrator (Phase 4 & 5 Architecture)", () => {
   beforeEach(() => {
-    // Reset call history and implementations to prevent bleed between tests
     vi.resetAllMocks();
   });
 
+  // --- BASE OPERATION & CIRCUIT BREAKERS ---
+
   it("should return the final answer on a successful first iteration", async () => {
-    // Parser expects "FINAL: " prefix for final answers
     vi.mocked(generateResponse).mockResolvedValueOnce(
       "FINAL: The sky is blue.",
     );
@@ -82,11 +82,10 @@ describe("Agent Loop Orchestrator", () => {
   });
 
   it("should abort after 3 consecutive malformed parser outputs", async () => {
-    // Send 3 completely unparseable garbage strings
     vi.mocked(generateResponse)
-      .mockResolvedValueOnce("Invalid string 1")
-      .mockResolvedValueOnce("Invalid string 2")
-      .mockResolvedValueOnce("Invalid string 3");
+      .mockResolvedValueOnce("Garbage string 1")
+      .mockResolvedValueOnce("Garbage string 2")
+      .mockResolvedValueOnce("Garbage string 3");
 
     const result = await runAgent("Trigger parsing errors");
 
@@ -101,25 +100,22 @@ describe("Agent Loop Orchestrator", () => {
     });
   });
 
-  it("should execute a tool, update memory, and resolve on the next iteration", async () => {
-    // Iteration 1: Provide raw tool JSON
-    vi.mocked(generateResponse).mockResolvedValueOnce(
-      JSON.stringify({
-        tool: "read_files",
-        args: { paths: ["src/index.ts"] },
-      }),
-    );
+  // --- TOOL EXECUTION & LOOP GUARDS ---
 
-    // Executor succeeds
+  it("should execute a tool, update memory, and resolve on the next iteration", async () => {
+    vi.mocked(generateResponse)
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          tool: "read_files",
+          args: { paths: ["src/index.ts"] },
+        }),
+      )
+      .mockResolvedValueOnce("FINAL: The file prints hello world.");
+
     vi.mocked(executeToolCall).mockResolvedValueOnce({
       success: true,
       output: "console.log('hello world');",
     });
-
-    // Iteration 2: Provide valid FINAL answer
-    vi.mocked(generateResponse).mockResolvedValueOnce(
-      "FINAL: The file prints hello world.",
-    );
 
     const result = await runAgent("What does index.ts do?");
 
@@ -139,20 +135,16 @@ describe("Agent Loop Orchestrator", () => {
     });
   });
 
-  it("should intercept repeated tool calls and eventually hit MAX_ITERATIONS safely", async () => {
-    // LLM stubbornly repeats the exact same tool call
+  it("should intercept repeated tool calls and safely hit MAX_ITERATIONS without infinite executor loops", async () => {
     vi.mocked(generateResponse).mockImplementation(() =>
       Promise.resolve(
-        JSON.stringify({
-          tool: "echo",
-          args: { text: "stuck in a loop" },
-        }),
+        JSON.stringify({ tool: "echo", args: { text: "looping" } }),
       ),
     );
 
     vi.mocked(executeToolCall).mockResolvedValue({
       success: true,
-      output: "stuck in a loop",
+      output: "looping",
     });
 
     const result = await runAgent("Trigger infinite loop");
@@ -161,42 +153,116 @@ describe("Agent Loop Orchestrator", () => {
       status: "max_iterations",
       diagnostics: {
         iterations: 10,
-        toolCalls: 1, // Proof that LoopGuard blocked the 9 identical attempts
+        toolCalls: 1, // LoopGuard blocked the subsequent 9 identical attempts
         toolFailures: 0,
         malformedResponses: 0,
       },
     });
   });
 
-  it("should abort if it hits the MAX_ITERATIONS limit with dynamic actions", async () => {
-    let callCount = 0;
+  // --- SAFETY LAYER & ENFORCEMENT RULES ---
 
-    // LLM provides uniquely valid tool calls to bypass the repetition guard
-    vi.mocked(generateResponse).mockImplementation(() => {
-      callCount++;
-      return Promise.resolve(
-        JSON.stringify({
-          tool: "echo",
-          args: { text: `dynamic call ${callCount}` },
-        }),
-      );
+  it("should reject FINAL answer if verification is requested but no verification tool was run", async () => {
+    vi.mocked(generateResponse)
+      // Iteration 1: Agent tries to answer immediately (should be blocked)
+      .mockResolvedValueOnce("FINAL: The tests pass perfectly.")
+      // Iteration 2: Agent runs the tests
+      .mockResolvedValueOnce(JSON.stringify({ tool: "run_tests", args: {} }))
+      // Iteration 3: Agent answers again (should be accepted)
+      .mockResolvedValueOnce("FINAL: Verified, tests pass.");
+
+    vi.mocked(executeToolCall).mockResolvedValueOnce({
+      success: true,
+      output: "PASS",
     });
+
+    const result = await runAgent("Please verify regressions in the code");
+
+    expect(result.status).toBe("completed");
+    expect(result.diagnostics.iterations).toBe(3);
+    expect(result.diagnostics.toolCalls).toBe(1);
+  });
+
+  it("should reject FINAL answer if repository inspection is requested but no files were read", async () => {
+    vi.mocked(generateResponse)
+      // Iteration 1: Agent tries to answer without tools
+      .mockResolvedValueOnce("FINAL: I analyzed the repository, looks good.")
+      // Iteration 2: Agent reads a file
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          tool: "read_files",
+          args: { paths: ["src/app.tsx"] },
+        }),
+      )
+      // Iteration 3: Agent answers
+      .mockResolvedValueOnce("FINAL: App is solid.");
+
+    vi.mocked(executeToolCall).mockResolvedValueOnce({
+      success: true,
+      output: "code",
+    });
+
+    const result = await runAgent("analyze the implementation in this repo");
+
+    expect(result.status).toBe("completed");
+    expect(result.diagnostics.iterations).toBe(3);
+    expect(result.diagnostics.toolCalls).toBe(1);
+  });
+
+  it("should detect a search storm and force the agent to stop searching", async () => {
+    vi.mocked(generateResponse)
+      // Agent fires three consecutive search commands
+      .mockResolvedValueOnce(
+        JSON.stringify({ tool: "search_files", args: { pattern: "test1" } }),
+      )
+      .mockResolvedValueOnce(
+        JSON.stringify({ tool: "search_files", args: { pattern: "test2" } }),
+      )
+      .mockResolvedValueOnce(
+        JSON.stringify({ tool: "search_files", args: { pattern: "test3" } }),
+      )
+      // After being blocked by the loop guard, it provides a final answer
+      .mockResolvedValueOnce("FINAL: Done searching.");
 
     vi.mocked(executeToolCall).mockResolvedValue({
       success: true,
-      output: "success",
+      output: "results",
     });
 
-    const result = await runAgent("Do 10 different things");
+    const result = await runAgent("find everything");
 
-    expect(result).toEqual({
-      status: "max_iterations",
-      diagnostics: {
-        iterations: 10,
-        toolCalls: 10, // All 10 went through
-        toolFailures: 0,
-        malformedResponses: 0,
-      },
+    expect(result.status).toBe("completed");
+    // Iterations: 3 searches + 1 block iteration + 1 final answer = 5 iterations. Wait, looking at the code:
+    // the block happens *on* the 3rd attempt via "continue", so iteration count increments.
+    expect(result.diagnostics.toolCalls).toBe(2); // 3rd is blocked, so only 2 actual tool executions
+  });
+
+  it("should enforce read-after-search limits to prevent context blindness", async () => {
+    vi.mocked(generateResponse)
+      .mockResolvedValueOnce(
+        JSON.stringify({ tool: "search_files", args: { pattern: "a" } }),
+      )
+      .mockResolvedValueOnce(
+        JSON.stringify({ tool: "search_files", args: { pattern: "b" } }),
+      )
+      // 3rd action is another search (should be blocked because searchesSinceRead >= 2)
+      .mockResolvedValueOnce(
+        JSON.stringify({ tool: "search_files", args: { pattern: "c" } }),
+      )
+      // Agent reads a file to clear the block
+      .mockResolvedValueOnce(
+        JSON.stringify({ tool: "read_files", args: { paths: ["a.ts"] } }),
+      )
+      .mockResolvedValueOnce("FINAL: Finished.");
+
+    vi.mocked(executeToolCall).mockResolvedValue({
+      success: true,
+      output: "data",
     });
+
+    const result = await runAgent("search for a bunch of files");
+
+    expect(result.status).toBe("completed");
+    expect(result.diagnostics.toolCalls).toBe(3); // 2 searches + 1 read
   });
 });

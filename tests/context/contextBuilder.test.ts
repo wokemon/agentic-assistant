@@ -11,10 +11,11 @@ vi.mock("../../src/agent/prompt", () => ({
 }));
 
 describe("ContextBuilder Validation Suite", () => {
-  // Define the shape explicitly so TypeScript knows these are string arrays
+  // Define the shape explicitly so TypeScript knows the structured types
   type MockMemoryState = {
     facts: string[];
-    openedFiles: string[];
+    // Upgraded to match the new OpenFile interface
+    openedFiles: { path: string; reason?: string }[];
     summaries: string[];
   };
 
@@ -50,10 +51,13 @@ describe("ContextBuilder Validation Suite", () => {
     expect(context[1].content).toBe("hello");
   });
 
-  it("should cleanly format WorkingMemory arrays into Markdown lists", () => {
+  it("should cleanly format WorkingMemory arrays into Markdown lists with reasons", () => {
     const memory = createMockMemory({
       facts: ["Test suite currently failing"],
-      openedFiles: ["src/app.ts", "src/parser.ts"],
+      openedFiles: [
+        { path: "src/app.ts", reason: "Checking exports" },
+        { path: "src/parser.ts" }, // Testing the default reason fallback
+      ],
       summaries: ["Fixed syntax error"],
     });
     const history = createMockHistory();
@@ -61,7 +65,10 @@ describe("ContextBuilder Validation Suite", () => {
     const context = buildContext(history, memory, "Next task");
     const sysPrompt = context[0].content;
 
-    expect(sysPrompt).toContain("OPEN FILES\n- src/app.ts\n- src/parser.ts");
+    // Asserts that the new dynamic Intent formatting works perfectly
+    expect(sysPrompt).toContain(
+      "OPEN FILES\n- src/app.ts\n  Reason: Checking exports\n- src/parser.ts\n  Reason: General inspection",
+    );
     expect(sysPrompt).toContain("FACTS\n- Test suite currently failing");
     expect(sysPrompt).toContain("PROGRESS\n- Fixed syntax error");
   });
@@ -69,11 +76,11 @@ describe("ContextBuilder Validation Suite", () => {
   it("should aggressively prune the oldest history messages when token budget is tight", () => {
     const memory = createMockMemory();
 
-    // Simulate a maxed-out budget (100,000 tokens = ~400,000 characters)
-    const massiveOldString = "A".repeat(390000); // ~97,500 tokens
+    // Simulate a maxed-out budget based on the new 40k limit (40,000 tokens = ~160,000 characters)
+    const massiveOldString = "A".repeat(150000); // ~37,500 tokens
     const recentString = "B".repeat(20000); // ~5,000 tokens
 
-    // Base context takes some tokens, so 97.5k + 5k = ~102.5k (which exceeds the 100k limit)
+    // Base context takes some tokens, so 37.5k + 5k = ~42.5k (which safely exceeds the 40k limit)
     const history = createMockHistory([
       { role: "assistant", content: massiveOldString }, // Oldest: Should be dropped
       { role: "user", content: recentString }, // Newest: Should be kept
@@ -90,8 +97,8 @@ describe("ContextBuilder Validation Suite", () => {
   it("should throw ContextBudgetExceededError if base context alone breaches the safety limit", () => {
     const memory = createMockMemory();
 
-    // Create an impossibly massive current task string to trigger the circuit breaker
-    const massiveTask = "C".repeat(450000); // ~112,500 tokens (Exceeds 100k max limit)
+    // Create an impossibly massive current task string to trigger the circuit breaker (Exceeds 40k limit)
+    const massiveTask = "C".repeat(200000); // ~50,000 tokens
     const history = createMockHistory();
 
     // The builder must fail deterministically rather than crashing the API

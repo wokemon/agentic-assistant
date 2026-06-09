@@ -5,8 +5,8 @@ import { SYSTEM_PROMPT } from "../agent/prompt";
 
 // Fast zero-dependency heuristic: 1 token ≈ 4 characters
 const CHARS_PER_TOKEN = 4;
-// Set this to ~80% of your chosen model's true limit to leave room for the output response
-const MAX_CONTEXT_TOKENS = 100000;
+// Dialed back to a safer margin to leave room for the model response and hidden overhead
+const MAX_CONTEXT_TOKENS = 40000;
 
 export class ContextBudgetExceededError extends Error {
   constructor(message: string) {
@@ -24,11 +24,12 @@ export function buildContext(
 
   // 1. Structural Memory Layout (P1)
   // Formatted cleanly with Markdown lists for optimal LLM parsing
+  // Now explicitly exposes the intent/reason behind file inspections
   const memoryContent = `
 === CURRENT WORKING MEMORY ===
 
 OPEN FILES
-${state.openedFiles.length > 0 ? state.openedFiles.map((f) => `- ${f}`).join("\n") : "- None"}
+${state.openedFiles.length > 0 ? state.openedFiles.map((f) => `- ${f.path}\n  Reason: ${f.reason || "General inspection"}`).join("\n") : "- None"}
 
 FACTS
 ${state.facts.length > 0 ? state.facts.map((f) => `- ${f}`).join("\n") : "- None"}

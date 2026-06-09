@@ -40,17 +40,24 @@ describe("WorkingMemory Validation Suite", () => {
     expect(state.facts).toContain("Fact number 21");
   });
 
-  it("should correctly track opened files, ignore duplicates, and maintain 'bounded recency'", () => {
-    memory.addOpenedFile("src/agent/loop.ts");
+  it("should correctly track opened files, update reasons, and maintain 'bounded recency'", () => {
+    memory.addOpenedFile("src/agent/loop.ts", "Initial look");
     memory.addOpenedFile("src/tools/registry.ts");
-    memory.addOpenedFile("src/agent/loop.ts"); // Re-opening should move it to the end (most recent)
+    // Re-opening should move it to the end (most recent) and update the reason
+    memory.addOpenedFile("src/agent/loop.ts", "Checking tool execution");
 
     const state = memory.getState();
 
     expect(state.openedFiles).toHaveLength(2);
-    // Evaluates bounded recency: The re-opened file should be the last item
-    expect(state.openedFiles[0]).toBe("src/tools/registry.ts");
-    expect(state.openedFiles[1]).toBe("src/agent/loop.ts");
+    // Evaluates bounded recency and object structure
+    expect(state.openedFiles[0]).toEqual({
+      path: "src/tools/registry.ts",
+      reason: undefined,
+    });
+    expect(state.openedFiles[1]).toEqual({
+      path: "src/agent/loop.ts",
+      reason: "Checking tool execution",
+    });
   });
 
   it("should safely handle undefined file paths", () => {
@@ -68,9 +75,12 @@ describe("WorkingMemory Validation Suite", () => {
     const state = memory.getState();
 
     expect(state.openedFiles).toHaveLength(20);
+
+    // Map objects to paths to verify the queue dropping logic
+    const paths = state.openedFiles.map((f) => f.path);
     // "file1.ts" should be dropped
-    expect(state.openedFiles).not.toContain("file1.ts");
-    expect(state.openedFiles).toContain("file21.ts");
+    expect(paths).not.toContain("file1.ts");
+    expect(paths).toContain("file21.ts");
   });
 
   it("should store and retain loop iteration summaries in chronological order", () => {

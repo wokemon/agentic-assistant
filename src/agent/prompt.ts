@@ -1,13 +1,10 @@
 import { tools } from "../tools/registry";
 
-const toolDocs = Object.values(tools)
-  .map(
-    (tool) => `
-Tool: ${tool.name}
-Description: ${tool.description}
-`,
-  )
-  .join("\n");
+const availableTools =
+  "Available tools:\n" +
+  Object.values(tools)
+    .map((t) => `- ${t.name}`)
+    .join("\n");
 
 export const SYSTEM_PROMPT = `
 You are an autonomous AI coding agent operating inside a software project.

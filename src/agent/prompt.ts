@@ -1,9 +1,38 @@
 import { tools } from "../tools/registry";
 
+function describeToolArgs(schema: any): string {
+  try {
+    // Zod v3: shape is a function — _def.shape()
+    // Zod v4: shape is a plain object — _def.shape
+    const rawShape =
+      typeof schema._def?.shape === "function"
+        ? schema._def.shape()
+        : schema._def?.shape;
+
+    if (!rawShape) return "";
+
+    return Object.entries(rawShape)
+      .map(([key, val]: [string, any]) => {
+        const typeName: string = val?._def?.typeName ?? "unknown";
+        const optional = typeName === "ZodOptional";
+        const innerType: string = optional
+          ? (val._def?.innerType?._def?.typeName ?? "unknown")
+          : typeName;
+        return `    ${key}${optional ? "?" : ""}: ${innerType.replace("Zod", "").toLowerCase()}`;
+      })
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+
 const availableTools =
   "Available tools:\n" +
   Object.values(tools)
-    .map((t) => `- ${t.name}`)
+    .map((t) => {
+      const args = describeToolArgs(t.schema);
+      return args ? `- ${t.name}\n${args}` : `- ${t.name}`;
+    })
     .join("\n");
 
 export const SYSTEM_PROMPT = `You are an autonomous coding agent.
@@ -13,14 +42,27 @@ ${availableTools}
 
 ## CORE RULES
 1. Never assume repository contents. Search before reading.
-2. Read only relevant files. Do not guess file paths.
-3. Tool output is raw data. Use it to inform your next action.
+2. Use find_files to locate files by name. Use search_files to find files containing specific text.
+3. Read only relevant files. Do not guess file paths.
 4. Do not repeat identical tool calls.
+5. Tool output is raw data. Use it to inform your next action or your final answer.
+
+## WHEN TO STOP
+Return a finalAnswer as soon as you have enough information to answer the user.
+Do not keep searching after you have found the answer.
+
+Simple retrieval tasks (list files, find a file, show directory contents) require
+only one tool call. Report the result directly — do not describe what you did.
+
+Example:
+User: "list files in src/agent"
+Wrong: "I listed the directory. The results are in working memory."
+Correct: "Files in src/agent:\n- loop.ts\n- runtime.ts\n- state.ts"
 
 ## RESPONSE FORMAT
-You must return ONLY valid JSON in one of two formats:
+Return ONLY valid JSON. No prose, no markdown, no explanation outside the JSON.
 
-Option 1: Execute a tool to gather information.
+Option 1 — call a tool:
 {
   "toolCall": {
     "tool": "tool_name",
@@ -28,8 +70,8 @@ Option 1: Execute a tool to gather information.
   }
 }
 
-Option 2: Return the final answer.
+Option 2 — return the final answer:
 {
-  "finalAnswer": "Your detailed conclusion or summary here."
+  "finalAnswer": "Your complete answer here. Include all relevant detail from tool outputs."
 }
 `;

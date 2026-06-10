@@ -145,15 +145,7 @@ Read one before performing more searches.
   if (loopGuard.isRepeating(toolName, args) && !previousReadTruncated) {
     history.add(
       "system",
-      `You already executed:
-
-Tool: ${toolName}
-
-with identical arguments.
-
-Do not repeat the same action.
-
-Use the information already gathered and choose a different action.`,
+      `You already ran '${toolName}' with these exact arguments. The result is already in your working memory under FACTS. Use it to answer the user instead of calling the tool again.`,
     );
     return { kind: "skip" };
   }

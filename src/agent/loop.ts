@@ -125,6 +125,16 @@ export async function runAgent(userInput: string): Promise<AgentResult> {
         );
         return outcome.result;
       }
+
+      // When a tool call is skipped (repeat guard, storm guard, etc.) the
+      // model receives no observation and silently retries or gives up.
+      // Nudge it toward using the data it already has.
+      if (outcome.kind === "skip") {
+        runtime.history.add(
+          "system",
+          `Your tool call was not executed. The data you need is already in your working memory. Review your FACTS and answer the user.`,
+        );
+      }
     }
   }
 

@@ -5,7 +5,7 @@ import type { AgentResult } from "../../shared/types";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_TOOL_FAILURES = 5;
-const MAX_MEMORY_CONTENT = 4000;
+const MAX_MEMORY_CONTENT = 12000; // was 4000 now 12000
 const MAX_CONSECUTIVE_DISCOVERY_ACTIONS = 3;
 const MAX_SEARCHES_BEFORE_READ = 2;
 

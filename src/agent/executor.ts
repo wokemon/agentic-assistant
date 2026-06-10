@@ -10,7 +10,8 @@ const TOOL_TIMEOUT_MS = 10_000;
 
 // Phase 4: Defensive Context Management Thresholds
 // Note: Keeping as characters for the MVP to avoid tokenizer overhead.
-const MAX_OUTPUT_LENGTH = 2000;
+// was 2000 now 8000
+const MAX_OUTPUT_LENGTH = 8000;
 
 // 1. Standard Head-and-Tail Truncation (Fallback)
 function truncateOutput(text: string | undefined, toolName: string): string {

@@ -19,6 +19,8 @@ export const VERIFICATION_TOOLS = new Set(["run_tests", "build_project"]);
 
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".json"];
 
+const TRUNCATION_MARKER = "[OUTPUT TRUNCATED";
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function wrapToolOutput(output: string): string {
@@ -38,6 +40,10 @@ function safeMemoryContent(content: string): string {
     return content;
   }
   return content.slice(0, MAX_MEMORY_CONTENT) + "\n\n[TRUNCATED]";
+}
+
+function wasOutputTruncated(output: string | undefined): boolean {
+  return (output ?? "").includes(TRUNCATION_MARKER);
 }
 
 // ─── Tool Processor ───────────────────────────────────────────────────────────
@@ -108,8 +114,18 @@ Read one before performing more searches.
   }
 
   // ── Repeat guard ──────────────────────────────────────────────────────────
+  // Exception: allow re-reading a file if the previous read was truncated.
+  // The model legitimately needs the rest of the content and has no other path.
 
-  if (loopGuard.isRepeating(toolName, args)) {
+  const isReadTool =
+    toolName === "read_files" || toolName === "read_file_lines";
+  const readPath =
+    toolName === "read_files"
+      ? (args.paths as string[])?.[0]
+      : (args.path as string);
+  const previousReadTruncated = isReadTool && memory.wasReadTruncated(readPath);
+
+  if (loopGuard.isRepeating(toolName, args) && !previousReadTruncated) {
     history.add(
       "system",
       `You already executed:
@@ -174,10 +190,12 @@ Use the information already gathered and choose a different action.`,
 
   // ── Update state from successful reads ────────────────────────────────────
 
+  const truncated = wasOutputTruncated(result.output);
+
   if (toolName === "read_files") {
     const paths = (args.paths as string[]) ?? [];
     for (const path of paths) {
-      memory.addOpenedFile(path);
+      memory.addOpenedFile(path, undefined, truncated);
     }
     if (paths.some((p) => SOURCE_EXTENSIONS.some((ext) => p?.endsWith(ext)))) {
       state.repositoryInspected = true;
@@ -186,7 +204,7 @@ Use the information already gathered and choose a different action.`,
 
   if (toolName === "read_file_lines") {
     const path = args.path as string;
-    memory.addOpenedFile(path);
+    memory.addOpenedFile(path, undefined, truncated);
     if (SOURCE_EXTENSIONS.some((ext) => path?.endsWith(ext))) {
       state.repositoryInspected = true;
     }

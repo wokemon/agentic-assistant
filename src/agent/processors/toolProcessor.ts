@@ -46,6 +46,19 @@ function wasOutputTruncated(output: string | undefined): boolean {
   return (output ?? "").includes(TRUNCATION_MARKER);
 }
 
+function buildDiscoveryFact(
+  toolName: string,
+  query: unknown,
+  output: string,
+): string {
+  // Make it explicit whether results are file names or files containing text,
+  // so the model doesn't confuse search hits with file locations.
+  if (toolName === "search_files") {
+    return `search_files found these files CONTAINING the text "${query}":\n${wrapToolOutput(output)}`;
+  }
+  return `Tool ${toolName} discovered:\n${wrapToolOutput(output)}`;
+}
+
 // ─── Tool Processor ───────────────────────────────────────────────────────────
 
 export type ToolProcessorOutcome =
@@ -239,7 +252,7 @@ Use the information already gathered and choose a different action.`,
   ) {
     memory.addFact(
       safeMemoryContent(
-        `Tool ${toolName} discovered:\n${wrapToolOutput(result.output ?? "")}`,
+        buildDiscoveryFact(toolName, args.query, result.output ?? ""),
       ),
     );
   } else if (VERIFICATION_TOOLS.has(toolName)) {

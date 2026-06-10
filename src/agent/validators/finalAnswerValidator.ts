@@ -5,6 +5,7 @@ import { AgentState } from "../state";
 
 export interface FinalAnswerValidationInput {
   userInput: string;
+  finalAnswer: string;
   state: AgentState;
   memory: WorkingMemory;
   toolCalls: number;
@@ -51,6 +52,12 @@ function requiresRepositoryInspection(userInput: string): boolean {
   ].some((pattern) => pattern.test(userInput));
 }
 
+function isReportingNotFound(finalAnswer: string): boolean {
+  return /not (find|found|locate|located)|does not exist|couldn't find|could not find|file not found|no file/i.test(
+    finalAnswer,
+  );
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 export function extractRequestedFile(userInput: string): string | null {
@@ -61,7 +68,7 @@ export function extractRequestedFile(userInput: string): string | null {
 export function validateFinalAnswer(
   input: FinalAnswerValidationInput,
 ): ValidationResult {
-  const { userInput, state, memory, toolCalls } = input;
+  const { userInput, finalAnswer, state, memory, toolCalls } = input;
 
   const needsRepoInspection = requiresRepositoryInspection(userInput);
   const needsVerification = requiresVerification(userInput);
@@ -113,7 +120,13 @@ Do not answer from assumptions about file contents.`,
     };
   }
 
-  if (requestedFile && !memory.hasOpenedFile(requestedFile)) {
+  // Allow the model to report that a file could not be found — that is a
+  // legitimate terminal state, not a premature answer.
+  if (
+    requestedFile &&
+    !memory.hasOpenedFile(requestedFile) &&
+    !isReportingNotFound(finalAnswer)
+  ) {
     return {
       valid: false,
       message: `The user explicitly requested analysis of:

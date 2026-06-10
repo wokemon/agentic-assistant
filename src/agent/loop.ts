@@ -82,6 +82,7 @@ export async function runAgent(userInput: string): Promise<AgentResult> {
     if ("finalAnswer" in response) {
       const validation = validateFinalAnswer({
         userInput,
+        finalAnswer: response.finalAnswer,
         state: runtime.state,
         memory: runtime.memory,
         toolCalls: runtime.diagnostics.toolCalls,

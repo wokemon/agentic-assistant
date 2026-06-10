@@ -98,7 +98,11 @@ Avoid further searching.
     return { kind: "skip" };
   }
 
+  // Only enforce the searches-before-read cap after the model has successfully
+  // read at least one file. Before that, searching is legitimate exploration —
+  // not avoidance — and blocking it leaves the model with no path forward.
   if (
+    state.repositoryInspected &&
     state.searchesSinceRead >= MAX_SEARCHES_BEFORE_READ &&
     DISCOVERY_TOOLS.has(toolName)
   ) {

@@ -61,6 +61,14 @@ function isReportingNotFound(finalAnswer: string): boolean {
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 export function extractRequestedFile(userInput: string): string | null {
+  // Only trigger if the user is asking to analyse/review/explain a specific
+  // file — not when they're asking to locate or find one.
+  const isSearchIntent = /\b(locate|find|search|where is|look for)\b/i.test(
+    userInput,
+  );
+
+  if (isSearchIntent) return null;
+
   const match = userInput.match(/\b[\w.-]+\.(ts|tsx|js|jsx|json|md)\b/i);
   return match?.[0] ?? null;
 }

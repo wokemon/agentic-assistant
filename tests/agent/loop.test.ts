@@ -1,285 +1,280 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runAgent } from "../../src/agent/loop";
-import { generateResponse } from "../../src/llm/client";
-import { executeToolCall } from "../../src/agent/executor";
 
-// 1. Mock the LLM Client
-vi.mock("../../src/llm/client", () => ({
-  generateResponse: vi.fn(),
-}));
+// ─── 1. Hoist the mock instance so vi.mock can access it safely ───────────────
+const { mockRuntimeInstance } = vi.hoisted(() => {
+  return {
+    mockRuntimeInstance: {
+      sessionId: "test-session",
+      diagnostics: {
+        iterations: 0,
+        toolCalls: 0,
+        toolFailures: 0,
+        malformedResponses: 0,
+      },
+      history: { add: vi.fn() },
+      memory: {},
+      state: {},
+    },
+  };
+});
 
-// 2. Mock the Executor
-vi.mock("../../src/agent/executor", () => ({
-  executeToolCall: vi.fn(),
-}));
-
-// 3. Mock the Logger to suppress output during tests but allow spying if needed
+// ─── 2. Mock all dependencies ──────────────────────────────────────────────────
 vi.mock("../../src/shared/logger", () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-    debug: vi.fn(),
-    child: vi.fn(() => ({
+    child: () => ({
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
-      debug: vi.fn(),
-    })),
+    }),
   },
 }));
 
-// Custom Error to simulate the Phase 4 Context Budget Circuit Breaker
-class ContextBudgetExceededError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ContextBudgetExceededError";
-  }
+vi.mock("../../src/llm/client");
+vi.mock("../../src/context/contextBuilder");
+vi.mock("../../src/agent/parser");
+vi.mock("../../src/agent/processors/toolProcessor");
+vi.mock("../../src/agent/processors/malformedResponseProcessor");
+vi.mock("../../src/agent/validators/finalAnswerValidator");
+
+// ─── Safely Mock the Class ───────────────────────────────────────────────────
+vi.mock("../../src/agent/runtime", () => {
+  return {
+    AgentRuntime: class {
+      constructor() {
+        // Whenever 'new AgentRuntime()' is called, hand back our hoisted mock object
+        return mockRuntimeInstance;
+      }
+    },
+  };
+});
+
+// ─── 3. Imports ───────────────────────────────────────────────────────────────
+import { runAgent } from "../../src/agent/loop";
+import { generateResponse } from "../../src/llm/client";
+import { buildContext } from "../../src/context/contextBuilder";
+import { parseAgentResponse } from "../../src/agent/parser";
+import { processToolCall } from "../../src/agent/processors/toolProcessor";
+import { processMalformedResponse } from "../../src/agent/processors/malformedResponseProcessor";
+import { validateFinalAnswer } from "../../src/agent/validators/finalAnswerValidator";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function setupMocks() {
+  // Reset the shared runtime instance before each test
+  mockRuntimeInstance.diagnostics = {
+    iterations: 0,
+    toolCalls: 0,
+    toolFailures: 0,
+    malformedResponses: 0,
+  };
+  mockRuntimeInstance.history.add = vi.fn();
+  vi.mocked(buildContext).mockReturnValue([]);
+  return mockRuntimeInstance;
 }
 
-describe("Agent Loop Orchestrator (Phase 4 & 5 Architecture)", () => {
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+describe("runAgent", () => {
+  let runtime: ReturnType<typeof setupMocks>;
+
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
+    runtime = setupMocks();
   });
 
-  // --- BASE OPERATION & CIRCUIT BREAKERS ---
+  // ── Happy path ───────────────────────────────────────────────────────────────
 
-  it("should return the final answer on a successful first iteration", async () => {
-    vi.mocked(generateResponse).mockResolvedValueOnce(
-      "FINAL: The sky is blue.",
-    );
-
-    const result = await runAgent("What color is the sky?");
-
-    expect(result).toEqual({
-      status: "completed",
-      finalAnswer: "The sky is blue.",
-      diagnostics: {
-        iterations: 1,
-        toolCalls: 0,
-        toolFailures: 0,
-        malformedResponses: 0,
-      },
-    });
-  });
-
-  it("should gracefully halt when the Phase 4 Context Circuit Breaker trips", async () => {
-    vi.mocked(generateResponse).mockRejectedValueOnce(
-      new ContextBudgetExceededError("Context budget exceeded"),
-    );
-
-    const result = await runAgent("A task that requires too much context");
-
-    expect(result).toEqual({
-      status: "context_budget_exceeded",
-      diagnostics: {
-        iterations: 1,
-        toolCalls: 0,
-        toolFailures: 0,
-        malformedResponses: 0,
-      },
-    });
-  });
-
-  it("should abort after 3 consecutive malformed parser outputs", async () => {
-    vi.mocked(generateResponse)
-      .mockResolvedValueOnce("Garbage string 1")
-      .mockResolvedValueOnce("Garbage string 2")
-      .mockResolvedValueOnce("Garbage string 3");
-
-    const result = await runAgent("Trigger parsing errors");
-
-    expect(result).toEqual({
-      status: "parse_failure",
-      diagnostics: {
-        iterations: 3,
-        toolCalls: 0,
-        toolFailures: 0,
-        malformedResponses: 3,
-      },
-    });
-  });
-
-  // --- TOOL EXECUTION & LOOP GUARDS ---
-
-  it("should execute a tool, update memory, and resolve on the next iteration", async () => {
-    vi.mocked(generateResponse)
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          toolCall: { tool: "read_files", args: { paths: ["src/index.ts"] } },
-        }),
-      )
-      .mockResolvedValueOnce("FINAL: The file prints hello world.");
-
-    vi.mocked(executeToolCall).mockResolvedValueOnce({
+  it("returns completed with finalAnswer on first valid response", async () => {
+    vi.mocked(generateResponse).mockResolvedValue('{"finalAnswer":"result"}');
+    vi.mocked(parseAgentResponse).mockReturnValue({
       success: true,
-      output: "console.log('hello world');",
+      data: { finalAnswer: "result" },
     });
+    vi.mocked(validateFinalAnswer).mockReturnValue({ valid: true });
 
-    const result = await runAgent("What does index.ts do?");
-
-    expect(result).toEqual({
-      status: "completed",
-      finalAnswer: "The file prints hello world.",
-      diagnostics: {
-        iterations: 2,
-        toolCalls: 1,
-        toolFailures: 0,
-        malformedResponses: 0,
-      },
-    });
-
-    expect(executeToolCall).toHaveBeenCalledWith("read_files", {
-      paths: ["src/index.ts"],
-    });
-  });
-
-  it("should intercept repeated tool calls and safely hit MAX_ITERATIONS without infinite executor loops", async () => {
-    vi.mocked(generateResponse).mockImplementation(() =>
-      Promise.resolve(
-        JSON.stringify({
-          toolCall: { tool: "echo", args: { text: "looping" } },
-        }),
-      ),
-    );
-
-    vi.mocked(executeToolCall).mockResolvedValue({
-      success: true,
-      output: "looping",
-    });
-
-    const result = await runAgent("Trigger infinite loop");
-
-    expect(result).toEqual({
-      status: "max_iterations",
-      diagnostics: {
-        iterations: 10,
-        toolCalls: 1, // LoopGuard blocked the subsequent 9 identical attempts
-        toolFailures: 0,
-        malformedResponses: 0,
-      },
-    });
-  });
-
-  // --- SAFETY LAYER & ENFORCEMENT RULES ---
-
-  it("should reject FINAL answer if verification is requested but no verification tool was run", async () => {
-    vi.mocked(generateResponse)
-      // Iteration 1: Agent tries to answer immediately (should be blocked)
-      .mockResolvedValueOnce("FINAL: The tests pass perfectly.")
-      // Iteration 2: Agent runs the tests
-      .mockResolvedValueOnce(
-        JSON.stringify({ toolCall: { tool: "run_tests", args: {} } }),
-      )
-      // Iteration 3: Agent answers again (should be accepted)
-      .mockResolvedValueOnce("FINAL: Verified, tests pass.");
-
-    vi.mocked(executeToolCall).mockResolvedValueOnce({
-      success: true,
-      output: "PASS",
-    });
-
-    const result = await runAgent("Please verify regressions in the code");
+    const result = await runAgent("test input");
 
     expect(result.status).toBe("completed");
-    expect(result.diagnostics.iterations).toBe(3);
-    expect(result.diagnostics.toolCalls).toBe(1);
+    expect(result.finalAnswer).toBe("result");
   });
 
-  it("should reject FINAL answer if repository inspection is requested but no files were read", async () => {
+  it("executes a tool call then returns finalAnswer on next iteration", async () => {
     vi.mocked(generateResponse)
-      // Iteration 1: Agent tries to answer without tools
-      .mockResolvedValueOnce("FINAL: I analyzed the repository, looks good.")
-      // Iteration 2: Agent reads a file
       .mockResolvedValueOnce(
-        JSON.stringify({
-          toolCall: { tool: "read_files", args: { paths: ["src/app.tsx"] } },
-        }),
+        '{"toolCall":{"tool":"find_files","args":{"pattern":"foo"}}}',
       )
-      // Iteration 3: Agent answers
-      .mockResolvedValueOnce("FINAL: App is solid.");
-
-    vi.mocked(executeToolCall).mockResolvedValueOnce({
-      success: true,
-      output: "code",
-    });
-
-    const result = await runAgent("analyze the implementation in this repo");
-
-    expect(result.status).toBe("completed");
-    expect(result.diagnostics.iterations).toBe(3);
-    expect(result.diagnostics.toolCalls).toBe(1);
-  });
-
-  it("should detect a search storm and force the agent to stop searching", async () => {
-    // Provide unique outputs for each sequential tool call to bypass the repetition check
-    vi.mocked(executeToolCall)
-      .mockResolvedValueOnce({
+      .mockResolvedValueOnce('{"finalAnswer":"done"}');
+    vi.mocked(parseAgentResponse)
+      .mockReturnValueOnce({
         success: true,
-        output: "search results branch A",
+        data: { toolCall: { tool: "find_files", args: { pattern: "foo" } } },
       })
-      .mockResolvedValueOnce({
-        success: true,
-        output: "search results branch B",
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        output: "search results branch C",
-      });
+      .mockReturnValueOnce({ success: true, data: { finalAnswer: "done" } });
+    vi.mocked(processToolCall).mockResolvedValue({ kind: "success" } as any);
+    vi.mocked(validateFinalAnswer).mockReturnValue({ valid: true });
 
-    // Provide exactly 3 valid searches wrapped in the toolCall schema
-    vi.mocked(generateResponse)
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          toolCall: { tool: "search_files", args: { query: "1" } },
-        }),
-      )
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          toolCall: { tool: "search_files", args: { query: "2" } },
-        }),
-      )
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          toolCall: { tool: "search_files", args: { query: "3" } },
-        }),
-      )
-      // After 3 searches, the guard triggers. The agent yields a final answer to finish.
-      .mockResolvedValueOnce("FINAL: I understand, stopping my search storm.");
+    const result = await runAgent("find foo");
 
-    const result = await runAgent("find everything");
-
+    expect(processToolCall).toHaveBeenCalledOnce();
     expect(result.status).toBe("completed");
-    expect(result.diagnostics.toolCalls).toBe(3);
+    expect(result.finalAnswer).toBe("done");
   });
 
-  it("should enforce read-after-search limits to prevent context blindness", async () => {
-    // Provide unique outputs for each sequential tool call
-    vi.mocked(executeToolCall)
-      .mockResolvedValueOnce({ success: true, output: "initial search hits" })
-      .mockResolvedValueOnce({
-        success: true,
-        output: "secondary search hits",
-      });
+  // ── Validator rejection ───────────────────────────────────────────────────────
 
-    // Provide exactly 2 valid searches wrapped in the toolCall schema
+  it("retries after validator rejects finalAnswer, then succeeds", async () => {
+    vi.mocked(generateResponse).mockResolvedValue('{"finalAnswer":"answer"}');
+    vi.mocked(parseAgentResponse).mockReturnValue({
+      success: true,
+      data: { finalAnswer: "answer" },
+    });
+    vi.mocked(validateFinalAnswer)
+      .mockReturnValueOnce({ valid: false, message: "needs more detail" })
+      .mockReturnValueOnce({ valid: true });
+
+    const result = await runAgent("test");
+
+    expect(runtime.history.add).toHaveBeenCalledWith(
+      "system",
+      "needs more detail",
+    );
+    expect(result.status).toBe("completed");
+  });
+
+  // ── Malformed responses ───────────────────────────────────────────────────────
+
+  it("continues loop when malformed response returns kind=continue", async () => {
     vi.mocked(generateResponse)
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          toolCall: { tool: "search_files", args: { query: "1" } },
-        }),
-      )
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          toolCall: { tool: "search_files", args: { query: "2" } },
-        }),
-      )
-      // After 2 searches, the guard demands a read. We exit with FINAL to complete the test.
-      .mockResolvedValueOnce("FINAL: I will stop and read a file now.");
+      .mockResolvedValueOnce("not json")
+      .mockResolvedValueOnce('{"finalAnswer":"recovered"}');
+    vi.mocked(parseAgentResponse)
+      .mockReturnValueOnce({ success: false, error: "parse error" })
+      .mockReturnValueOnce({
+        success: true,
+        data: { finalAnswer: "recovered" },
+      });
+    vi.mocked(processMalformedResponse).mockReturnValue({
+      kind: "continue",
+    } as any);
+    vi.mocked(validateFinalAnswer).mockReturnValue({ valid: true });
 
-    const result = await runAgent("search for a bunch of files");
+    const result = await runAgent("test");
 
     expect(result.status).toBe("completed");
-    expect(result.diagnostics.toolCalls).toBe(2);
+  });
+
+  it("aborts when malformed response processor returns kind=abort", async () => {
+    vi.mocked(generateResponse).mockResolvedValue("not json");
+    vi.mocked(parseAgentResponse).mockReturnValue({
+      success: false,
+      error: "parse error",
+    });
+    vi.mocked(processMalformedResponse).mockReturnValue({
+      kind: "abort",
+      result: { status: "malformed_response", diagnostics: {} as any },
+    });
+
+    const result = await runAgent("test");
+
+    expect(result.status).toBe("malformed_response");
+  });
+
+  // ── Tool call outcomes ────────────────────────────────────────────────────────
+
+  it("aborts when processToolCall returns kind=abort", async () => {
+    vi.mocked(generateResponse).mockResolvedValue(
+      '{"toolCall":{"tool":"bad_tool","args":{}}}',
+    );
+    vi.mocked(parseAgentResponse).mockReturnValue({
+      success: true,
+      data: { toolCall: { tool: "bad_tool", args: {} } },
+    });
+    vi.mocked(processToolCall).mockResolvedValue({
+      kind: "abort",
+      result: { status: "too_many_tool_failures", diagnostics: {} as any },
+    });
+
+    const result = await runAgent("test");
+
+    expect(result.status).toBe("too_many_tool_failures");
+  });
+
+  it("nudges model with system message when tool call is skipped", async () => {
+    vi.mocked(generateResponse)
+      .mockResolvedValueOnce('{"toolCall":{"tool":"find_files","args":{}}}')
+      .mockResolvedValueOnce('{"finalAnswer":"used memory"}');
+    vi.mocked(parseAgentResponse)
+      .mockReturnValueOnce({
+        success: true,
+        data: { toolCall: { tool: "find_files", args: {} } },
+      })
+      .mockReturnValueOnce({
+        success: true,
+        data: { finalAnswer: "used memory" },
+      });
+    vi.mocked(processToolCall).mockResolvedValue({ kind: "skip" } as any);
+    vi.mocked(validateFinalAnswer).mockReturnValue({ valid: true });
+
+    await runAgent("test");
+
+    expect(runtime.history.add).toHaveBeenCalledWith(
+      "system",
+      expect.stringContaining("working memory"),
+    );
+  });
+
+  // ── Context budget exceeded ───────────────────────────────────────────────────
+
+  it("returns context_budget_exceeded when LLM throws ContextBudgetExceededError", async () => {
+    const err = new Error("too long");
+    err.name = "ContextBudgetExceededError";
+    vi.mocked(generateResponse).mockRejectedValue(err);
+
+    const result = await runAgent("test");
+
+    expect(result.status).toBe("context_budget_exceeded");
+  });
+
+  it("re-throws unexpected errors from generateResponse", async () => {
+    vi.mocked(generateResponse).mockRejectedValue(new Error("network failure"));
+
+    await expect(runAgent("test")).rejects.toThrow("network failure");
+  });
+
+  // ── Max iterations ────────────────────────────────────────────────────────────
+
+  it("stops and returns max_iterations after 10 loops", async () => {
+    // Always return a tool call that succeeds so it never resolves
+    vi.mocked(generateResponse).mockResolvedValue(
+      '{"toolCall":{"tool":"find_files","args":{}}}',
+    );
+    vi.mocked(parseAgentResponse).mockReturnValue({
+      success: true,
+      data: { toolCall: { tool: "find_files", args: {} } },
+    });
+    vi.mocked(processToolCall).mockResolvedValue({ kind: "success" } as any);
+
+    const result = await runAgent("test");
+
+    expect(result.status).toBe("max_iterations");
+    expect(generateResponse).toHaveBeenCalledTimes(10);
+  });
+
+  // ── Diagnostics ───────────────────────────────────────────────────────────────
+
+  it("increments iterations in diagnostics on each loop", async () => {
+    vi.mocked(generateResponse).mockResolvedValue('{"finalAnswer":"x"}');
+    vi.mocked(parseAgentResponse).mockReturnValue({
+      success: true,
+      data: { finalAnswer: "x" },
+    });
+    vi.mocked(validateFinalAnswer).mockReturnValue({ valid: true });
+
+    await runAgent("test");
+
+    expect(runtime.diagnostics.iterations).toBe(1);
   });
 });

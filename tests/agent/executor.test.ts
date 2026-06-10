@@ -1,158 +1,212 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { executeToolCall } from "../../src/agent/executor";
+import { tools } from "../../src/tools/registry";
+import { CommandPolicy } from "../../src/safety/commandPolicy";
+import { PathValidation } from "../../src/safety/pathValidation";
+import { SafetyBlockedError } from "../../src/safety/errors";
 import { z } from "zod";
 
-// Mock registry
+// --- Mocks ---
 vi.mock("../../src/tools/registry", () => ({
-  tools: {
-    echo: {
-      schema: z.object({
-        text: z.string(),
-      }),
-      execute: vi.fn(async ({ text }) => ({
-        success: true,
-        output: text,
-      })),
-    },
+  tools: {},
+}));
 
-    list_files: {
-      schema: z.object({}),
-      execute: vi.fn(async () => ({
-        success: true,
-        output: Array.from({ length: 25 }, (_, i) => `src/file_${i}.ts`).join(
-          "\n",
-        ),
-      })),
-    },
-
-    failTool: {
-      schema: z.object({}),
-      execute: vi.fn(async () => {
-        throw new Error("Underlying system failure");
-      }),
-    },
-
-    metadataTool: {
-      schema: z.object({}),
-      execute: vi.fn(async () => ({
-        success: true,
-        output: "done",
-        metadata: {
-          linesRead: 42,
-        },
-      })),
-    },
-
-    timeoutTool: {
-      schema: z.object({}),
-      execute: vi.fn(async () => {
-        throw new Error("Tool execution timed out");
-      }),
-    },
+vi.mock("../../src/shared/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
-import { executeToolCall } from "../../src/agent/executor";
-import { tools } from "../../src/tools/registry";
+vi.mock("../../src/safety/commandPolicy", () => ({
+  CommandPolicy: {
+    validateOrThrow: vi.fn(),
+  },
+}));
+
+vi.mock("../../src/safety/pathValidation", () => ({
+  PathValidation: {
+    validateOrThrow: vi.fn(),
+    validateOrThrowMultiple: vi.fn(),
+  },
+}));
 
 describe("executeToolCall", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+
+    // Reset tools registry for each test
+    for (const key in tools) {
+      delete tools[key];
+    }
   });
 
-  describe("tool lookup", () => {
-    it("returns validation failure for unknown tools", async () => {
-      const result = await executeToolCall("missingTool", {});
-
-      expect(result.success).toBe(false);
-      expect(result.failureType).toBe("validation");
-      expect(result.error).toContain("Unknown tool");
-    });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  describe("argument validation", () => {
-    it("returns validation failure for invalid arguments", async () => {
-      const result = await executeToolCall("echo", {
-        wrong: "field",
-      });
+  // --- 1. Unknown Tool ---
+  it("should return a validation error for an unknown tool", async () => {
+    tools["existing_tool"] = { schema: z.any(), execute: vi.fn() } as any;
 
-      expect(result.success).toBe(false);
-      expect(result.failureType).toBe("validation");
-      expect(result.error).toContain("text");
-    });
+    const result = await executeToolCall("missing_tool", {});
+
+    expect(result.success).toBe(false);
+    expect(result.failureType).toBe("validation");
+    expect(result.error).toContain("Unknown tool: missing_tool");
+    expect(result.error).toContain("existing_tool");
   });
 
-  describe("successful execution", () => {
-    it("executes a tool successfully", async () => {
-      const result = await executeToolCall("echo", {
-        text: "hello",
-      });
+  // --- 2. Validation Errors ---
+  it("should return a validation error when arguments fail schema parsing", async () => {
+    tools["mock_tool"] = {
+      schema: z.object({ requiredField: z.string() }),
+      execute: vi.fn(),
+    } as any;
 
-      expect(result.success).toBe(true);
-      expect(result.output).toBe("hello");
-      expect(result.error).toBe("");
+    const result = await executeToolCall("mock_tool", { wrongField: 123 });
 
-      expect(tools.echo.execute).toHaveBeenCalledWith({
-        text: "hello",
-      });
-    });
-
-    it("preserves metadata returned by tools", async () => {
-      const result = await executeToolCall("metadataTool", {});
-
-      expect(result.success).toBe(true);
-
-      expect(result.metadata).toEqual({
-        linesRead: 42,
-      });
-    });
+    expect(result.success).toBe(false);
+    expect(result.failureType).toBe("validation");
+    expect(result.error).toContain("Invalid arguments for tool 'mock_tool'");
+    expect(result.error).toContain("requiredField");
   });
 
-  describe("output normalization", () => {
-    it("summarizes large file listings", async () => {
-      const result = await executeToolCall("list_files", {});
+  // --- 3. Safety Policies ---
+  it("should enforce CommandPolicy for terminal_execute", async () => {
+    tools["terminal_execute"] = {
+      schema: z.object({ command: z.string() }),
+      execute: vi.fn(),
+    } as any;
 
-      expect(result.success).toBe(true);
-      expect(result.output).toContain("Found 25 items.");
-      expect(result.output).toContain("Examples:");
-      expect(result.output).toContain("... [15 more items omitted]");
+    vi.mocked(CommandPolicy.validateOrThrow).mockImplementationOnce(() => {
+      throw new SafetyBlockedError("Command blocked", "command_injection");
     });
 
-    it("truncates oversized output", async () => {
-      const massiveString = "A".repeat(3000);
-
-      vi.mocked(tools.echo.execute).mockResolvedValueOnce({
-        success: true,
-        output: massiveString,
-      });
-
-      const result = await executeToolCall("echo", {
-        text: "ignored",
-      });
-
-      expect(result.success).toBe(true);
-
-      expect(result.output).toContain(
-        "[OUTPUT TRUNCATED: 1000 characters omitted]",
-      );
-
-      expect(result.output.length).toBeLessThan(massiveString.length);
+    const result = await executeToolCall("terminal_execute", {
+      command: "rm -rf /",
     });
+
+    expect(result.success).toBe(false);
+    expect(result.failureType).toBe("safety");
+    expect(result.error).toContain("Command blocked");
   });
 
-  describe("failure handling", () => {
-    it("classifies runtime execution failures", async () => {
-      const result = await executeToolCall("failTool", {});
+  it("should enforce PathValidation for write_files", async () => {
+    tools["write_files"] = {
+      schema: z.object({ files: z.array(z.object({ path: z.string() })) }),
+      execute: vi.fn(),
+    } as any;
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Underlying system failure");
-      expect(result.failureType).toBe("execution");
-    });
+    await executeToolCall("write_files", { files: [{ path: "/etc/passwd" }] });
 
-    it("classifies timeout failures", async () => {
-      const result = await executeToolCall("timeoutTool", {});
+    expect(PathValidation.validateOrThrowMultiple).toHaveBeenCalledWith([
+      "/etc/passwd",
+    ]);
+  });
 
-      expect(result.success).toBe(false);
-      expect(result.failureType).toBe("timeout");
-    });
+  // --- 4. Successful Execution & Normalization ---
+  it("should execute successfully and return output", async () => {
+    tools["mock_tool"] = {
+      schema: z.object({ name: z.string() }),
+      execute: vi
+        .fn()
+        .mockResolvedValue({ success: true, output: "Hello World", error: "" }),
+    } as any;
+
+    const result = await executeToolCall("mock_tool", { name: "test" });
+
+    expect(result.success).toBe(true);
+    expect(result.output).toBe("Hello World");
+  });
+
+  // --- 5. Truncation Logic ---
+  it("should truncate outputs exceeding MAX_OUTPUT_LENGTH", async () => {
+    const longString = "A".repeat(10000); // Exceeds 8000
+    tools["mock_tool"] = {
+      schema: z.any(),
+      execute: vi
+        .fn()
+        .mockResolvedValue({ success: true, output: longString, error: "" }),
+    } as any;
+
+    const result = await executeToolCall("mock_tool", {});
+
+    expect(result.output.length).toBeLessThan(10000);
+    expect(result.output).toContain(
+      "[OUTPUT TRUNCATED: 2000 characters omitted]",
+    );
+  });
+
+  // --- 6. Summarization Layer ---
+  it("should summarize list_files if output has more than 20 items", async () => {
+    const files = Array.from({ length: 25 }, (_, i) => `file${i}.ts`).join(
+      "\n",
+    );
+    tools["list_files"] = {
+      schema: z.any(),
+      execute: vi
+        .fn()
+        .mockResolvedValue({ success: true, output: files, error: "" }),
+    } as any;
+
+    const result = await executeToolCall("list_files", {});
+
+    expect(result.output).toContain("Found 25 items.");
+    expect(result.output).toContain("... [15 more items omitted]");
+    expect(result.output).not.toContain("file20.ts"); // Should be omitted
+  });
+
+  // --- 7. Timeouts ---
+  it("should fail with timeout if execution takes too long", async () => {
+    tools["slow_tool"] = {
+      schema: z.any(),
+      execute: vi
+        .fn()
+        .mockImplementation(
+          () => new Promise((resolve) => setTimeout(resolve, 15000)),
+        ),
+    } as any;
+
+    // Start execution and advance timers past the 10_000ms limit
+    const executePromise = executeToolCall("slow_tool", {});
+    vi.advanceTimersByTime(11000);
+
+    const result = await executePromise;
+
+    expect(result.success).toBe(false);
+    expect(result.failureType).toBe("timeout");
+    expect(result.error).toContain("Tool execution timed out");
+  });
+
+  // --- 8. Error Classification ---
+  it("should correctly classify ENOENT as not_found", async () => {
+    tools["failing_tool"] = {
+      schema: z.any(),
+      execute: vi
+        .fn()
+        .mockRejectedValue(new Error("ENOENT: no such file or directory")),
+    } as any;
+
+    const result = await executeToolCall("failing_tool", {});
+
+    expect(result.success).toBe(false);
+    expect(result.failureType).toBe("not_found");
+  });
+
+  it("should correctly classify EACCES as permission denied", async () => {
+    tools["failing_tool"] = {
+      schema: z.any(),
+      execute: vi
+        .fn()
+        .mockRejectedValue(new Error("EACCES: permission denied")),
+    } as any;
+
+    const result = await executeToolCall("failing_tool", {});
+
+    expect(result.success).toBe(false);
+    expect(result.failureType).toBe("permission");
   });
 });

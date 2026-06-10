@@ -34,7 +34,9 @@ export type AgentStatus =
   | "completed"
   | "max_iterations"
   | "parse_failure"
-  | "context_budget_exceeded";
+  | "context_budget_exceeded"
+  | "malformed_response"
+  | "too_many_tool_failures";
 
 export interface AgentDiagnostics {
   sessionId: string;

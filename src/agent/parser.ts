@@ -45,22 +45,6 @@ export function parseAgentResponse(response: string): ParseResult {
   response = response.trim();
 
   // --------------------------------------------------
-  // MODE 1: Final Answer Mode (Regex Anchored)
-  // --------------------------------------------------
-  // This strict anchor prevents "context bleed" if the agent reads a file
-  // that happens to contain the word "FINAL:" in the middle of a sentence.
-  const finalMatch = response.match(/^FINAL:\s*([\s\S]*)/m);
-
-  if (finalMatch) {
-    const finalAnswer = finalMatch[1].trim();
-    if (!finalAnswer) {
-      return { success: false, error: "FINAL block cannot be empty." };
-    }
-    logger.info("Agent final answer parsed successfully via Regex");
-    return { success: true, data: { finalAnswer } };
-  }
-
-  // --------------------------------------------------
   // MODE 2: Tool Call Mode (JSON Extraction)
   // --------------------------------------------------
   const jsonText = extractJsonObject(response);

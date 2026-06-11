@@ -17,51 +17,16 @@ describe("Agent Response Parser (Dual-Mode Phase 4)", () => {
   });
 
   // -----------------------------------
-  // FINAL ANSWER MODE TESTS
+  // FINAL: prefix tests (should be rejected)
   // -----------------------------------
-  describe("Final Answer Mode", () => {
-    it("should parse standard anchored final answers correctly", () => {
+  describe("FINAL prefix rejection", () => {
+    it("should reject FINAL: some answer as malformed", () => {
       const response = "FINAL: Task completed successfully.";
       const result = parseAgentResponse(response);
 
-      expect(result.success).toBe(true);
-      if (result.success) {
-        // Use the 'in' operator to narrow the union type for the compiler
-        expect("finalAnswer" in result.data).toBe(true);
-        if ("finalAnswer" in result.data) {
-          expect(result.data.finalAnswer).toBe("Task completed successfully.");
-        }
-      }
-    });
-
-    it("should safely capture multi-line final answers with code blocks", () => {
-      const response = `FINAL: Here is the code you requested:
-\`\`\`typescript
-const x = 42;
-console.log(x);
-\`\`\`
-Let me know if you need anything else!`;
-
-      const result = parseAgentResponse(response);
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect("finalAnswer" in result.data).toBe(true);
-        if ("finalAnswer" in result.data) {
-          expect(result.data.finalAnswer).toContain("const x = 42;");
-          expect(result.data.finalAnswer).toContain(
-            "Let me know if you need anything else!",
-          );
-        }
-      }
-    });
-
-    it("should fail gracefully if FINAL string is completely empty", () => {
-      const response = "FINAL: \n   ";
-      const result = parseAgentResponse(response);
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error).toContain("FINAL block cannot be empty");
+        expect(result.error).toContain("No JSON object found");
       }
     });
 

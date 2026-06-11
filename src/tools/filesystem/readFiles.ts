@@ -73,19 +73,30 @@ Do not use this tool when:
     );
 
     try {
-      const contents = await Promise.all(
-        args.paths.map(async (path) => {
-          logger.debug({ path }, "Reading file");
+      const MAX_READ_BYTES = 5 * 1024 * 1024;
 
-          const content = await fs.readFile(path, "utf-8");
+      const contents: string[] = [];
+      for (const path of args.paths) {
+        logger.debug({ path }, "Reading file");
 
-          if (args.preview) {
-            return [`FILE: ${path}`, content.slice(0, 1000)].join("\n");
-          }
+        const stat = await fs.stat(path);
+        if (stat.size > MAX_READ_BYTES) {
+          const sizeMb = stat.size / (1024 * 1024);
+          return {
+            success: false,
+            output: "",
+            error: `File exceeds the 5 MB read limit (size: ${sizeMb.toFixed(2)} MB). Use read_file_lines to read a specific range instead.`,
+          };
+        }
 
-          return [`FILE: ${path}`, content].join("\n");
-        }),
-      );
+        const content = await fs.readFile(path, "utf-8");
+
+        if (args.preview) {
+          contents.push([`FILE: ${path}`, content.slice(0, 1000)].join("\n"));
+        } else {
+          contents.push([`FILE: ${path}`, content].join("\n"));
+        }
+      }
 
       logger.info(
         {

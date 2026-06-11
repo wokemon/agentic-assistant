@@ -169,7 +169,7 @@ describe("processToolCall", () => {
 
     expect(result.kind).toBe("abort");
     if (result.kind === "abort") {
-      expect(result.result.status).toBe("tool_failure_limit");
+      expect(result.result.status).toBe("too_many_tool_failures");
     }
   });
 

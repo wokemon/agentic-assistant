@@ -183,9 +183,9 @@ Read one before performing more searches.
       return {
         kind: "abort",
         result: {
-          status: "tool_failure_limit",
+          status: "too_many_tool_failures",
           diagnostics,
-        } as unknown as AgentResult,
+        },
       };
     }
 

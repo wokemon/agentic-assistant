@@ -15,7 +15,7 @@ A TypeScript-based AI coding agent that autonomously investigates, modifies, and
 - ⚙️ Execution middleware for validation, logging, and tool orchestration
 - 🛡️ Built-in safety mechanisms
   - Loop detection
-  - Timeout protection
+  - Timeout protection (caps agent waiting; underlying process not cancelled)
   - Path validation
   - Malformed response handling
 
@@ -69,7 +69,8 @@ Create a `.env` file in the project root:
 ```env
 OPENAI_API_KEY=your_api_key_here
 OPENAI_BASE_URL=https://api.openai.com/v1
-MODEL=qwen/qwen3-coder:free
+LLM_MODEL=gpt-5.4-nano-2026-03-17
+MAX_CONTEXT_TOKENS=100000
 ```
 
 ### Environment Variables
@@ -78,7 +79,8 @@ MODEL=qwen/qwen3-coder:free
 | --------------- | -------- | --------------------------------- |
 | OPENAI_API_KEY  | Yes      | API key for model provider        |
 | OPENAI_BASE_URL | No       | Custom OpenAI-compatible endpoint |
-| MODEL           | No       | Model identifier                  |
+| LLM_MODEL       | No       | Model identifier                  |
+| MAX_CONTEXT_TOKENS | No    | Max context token budget (estimate) |
 
 ---
 
@@ -142,6 +144,14 @@ pnpm test -- --coverage
 
 ---
 
+## Typecheck
+
+```bash
+pnpm typecheck
+```
+
+---
+
 ## Available Tools
 
 ### list_files
@@ -201,13 +211,144 @@ Example:
 
 ---
 
-### Planned Tools
+### read_file_lines
 
-- git_status
-- git_diff
-- run_tests
-- run_build
-- grep_search
+Reads a line range from a file.
+
+Example:
+
+```json
+{
+  "tool": "read_file_lines",
+  "args": {
+    "filePath": "src/agent/loop.ts",
+    "startLine": 1,
+    "endLine": 20
+  }
+}
+```
+
+---
+
+### search_files
+
+Searches the workspace for text and returns matching file paths.
+
+Example:
+
+```json
+{
+  "tool": "search_files",
+  "args": {
+    "query": "ToolDefinition",
+    "directory": "."
+  }
+}
+```
+
+---
+
+### find_files
+
+Recursively searches for file names (substring/pattern) and returns matching file paths.
+
+Example:
+
+```json
+{
+  "tool": "find_files",
+  "args": {
+    "pattern": "loop",
+    "directory": "."
+  }
+}
+```
+
+---
+
+### terminal_execute
+
+Executes a shell command.
+
+Example:
+
+```json
+{
+  "tool": "terminal_execute",
+  "args": {
+    "command": "pnpm test",
+    "timeoutMs": 30000
+  }
+}
+```
+
+---
+
+### git_status
+
+Returns current git status.
+
+Example:
+
+```json
+{
+  "tool": "git_status",
+  "args": {
+    "includeUntracked": true
+  }
+}
+```
+
+---
+
+### git_diff
+
+Returns a git diff.
+
+Example:
+
+```json
+{
+  "tool": "git_diff",
+  "args": {
+    "staged": false,
+    "file": "src/agent/executor.ts"
+  }
+}
+```
+
+---
+
+### run_tests
+
+Runs the test suite (Vitest).
+
+Example:
+
+```json
+{
+  "tool": "run_tests",
+  "args": {
+    "target": "all",
+    "testFile": "tests/agent/loop.test.ts"
+  }
+}
+```
+
+---
+
+### build_project
+
+Builds the project.
+
+Example:
+
+```json
+{
+  "tool": "build_project",
+  "args": {}
+}
+```
 
 ---
 
@@ -223,9 +364,11 @@ src/
 │   └── state.ts
 │
 ├── tools/
-│   ├── filesystem/
-│   ├── schemas/
-│   └── registry.ts
+ │   ├── filesystem/
+ │   ├── git/
+ │   ├── project/
+ │   ├── testing/
+ │   └── registry.ts
 │
 ├── context/
 │   └── workingMemory.ts
@@ -284,7 +427,7 @@ Prevents repetitive tool-call cycles.
 
 ### Timeout Protection
 
-Tool execution is automatically terminated after configured limits.
+Tool execution is capped by a timeout on the agent’s waiting period (the underlying process is not cancelled by default).
 
 ### Structured Parsing
 

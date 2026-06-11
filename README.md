@@ -75,12 +75,12 @@ MAX_CONTEXT_TOKENS=100000
 
 ### Environment Variables
 
-| Variable        | Required | Description                       |
-| --------------- | -------- | --------------------------------- |
-| OPENAI_API_KEY  | Yes      | API key for model provider        |
-| OPENAI_BASE_URL | No       | Custom OpenAI-compatible endpoint |
-| LLM_MODEL       | No       | Model identifier                  |
-| MAX_CONTEXT_TOKENS | No    | Max context token budget (estimate) |
+| Variable           | Required | Description                         |
+| ------------------ | -------- | ----------------------------------- |
+| OPENAI_API_KEY     | Yes      | API key for model provider          |
+| OPENAI_BASE_URL    | No       | Custom OpenAI-compatible endpoint   |
+| LLM_MODEL          | No       | Model identifier                    |
+| MAX_CONTEXT_TOKENS | No       | Max context token budget (estimate) |
 
 ---
 
@@ -470,21 +470,21 @@ This improves debugging, testing, and future observability.
 - File operations
 - Safety guards
 
-### Phase 2 (Current)
+### Phase 2 (Completed)
 
 - Executor abstraction
 - Structured agent results
 - Context management
 - Test coverage
 
-### Phase 3
+### Phase 3 (Completed)
 
 - Git tools
 - Build execution
 - Test execution
 - Repository analysis improvements
 
-### Phase 4
+### Phase 4 (Current)
 
 - Web UI
 - Streaming updates

@@ -18,7 +18,7 @@ const schema = z
 
 type ReadFileLinesArgs = z.infer<typeof schema>;
 
-export const readFileLinesTool: ToolDefinition = {
+export const readFileLinesTool: ToolDefinition<ReadFileLinesArgs> = {
   name: "read_file_lines",
   description: `
 Read a specific line range from a file.
@@ -59,10 +59,8 @@ Do not use this tool when:
 - Full-file context is required and the file is reasonably small
 `,
   schema,
-  // Maintain the (args: any) pattern to satisfy the global ToolDefinition interface
-  async execute(args: any) {
-    // Cast internally for strict type safety within the logic block
-    const { filePath, startLine, endLine } = args as ReadFileLinesArgs;
+  async execute(args) {
+    const { filePath, startLine, endLine } = args;
 
     logger.info(
       { tool: "read_file_lines", filePath, startLine, endLine },

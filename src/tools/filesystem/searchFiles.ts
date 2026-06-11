@@ -11,7 +11,7 @@ const schema = z.object({
 
 type SearchFilesArgs = z.infer<typeof schema>;
 
-export const searchFilesTool: ToolDefinition = {
+export const searchFilesTool: ToolDefinition<SearchFilesArgs> = {
   name: "search_files",
   description: `
 Search files in the workspace for a specific keyword, identifier, function name, class name, error message, import, or code pattern.
@@ -57,8 +57,8 @@ Do not use this tool when:
 - Reading code is required (use read_file_lines or read_files)
 `,
   schema,
-  async execute(args: any) {
-    const { query, directory } = args as SearchFilesArgs;
+  async execute(args) {
+    const { query, directory } = args;
 
     logger.info(
       {

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { logger } from "../../shared/logger";
+import type { ToolDefinition } from "../../shared/types";
 
 const execPromise = promisify(exec);
 
@@ -19,12 +20,14 @@ export const gitDiffSchema = z.object({
     .describe("If true, shows staged changes (--cached). Default is false."),
 });
 
-export const gitDiffTool = {
+type GitDiffArgs = z.infer<typeof gitDiffSchema>;
+
+export const gitDiffTool: ToolDefinition<GitDiffArgs> = {
   name: "git_diff",
   description:
     "View line-by-line changes made to files. Use this to review and verify your code edits.",
   schema: gitDiffSchema,
-  execute: async (args: z.infer<typeof gitDiffSchema>) => {
+  execute: async (args) => {
     try {
       // Build the git diff command safely
       let cmd = "git diff";
@@ -54,13 +57,16 @@ export const gitDiffTool = {
         // The Phase 4 executor will automatically handle truncating this if it's massive
         output: stdout,
       };
-    } catch (error: any) {
-      logger.error({ error: error.message }, "Git diff failed");
+    } catch (error) {
+      const err = error as { message?: unknown };
+      const message = typeof err.message === "string" ? err.message : "Unknown error";
+
+      logger.error({ error: message }, "Git diff failed");
 
       return {
         success: false,
         output: "",
-        error: `Failed to get git diff: ${error.message.split("\n")[0]}`,
+        error: `Failed to get git diff: ${message.split("\n")[0]}`,
       };
     }
   },

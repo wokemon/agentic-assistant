@@ -80,5 +80,5 @@ export interface ToolDefinition<TArgs = unknown> {
 
   schema: z.ZodType<TArgs>;
 
-  execute: (args: TArgs) => Promise<ToolResult>;
+  execute(args: TArgs): Promise<ToolResult>;
 }

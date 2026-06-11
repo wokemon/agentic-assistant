@@ -1,22 +1,36 @@
+import type { ZodTypeAny } from "zod";
 import { tools } from "../tools/registry";
 
-function describeToolArgs(schema: any): string {
+function describeToolArgs(schema: ZodTypeAny): string {
   try {
     // Zod v3: shape is a function — _def.shape()
     // Zod v4: shape is a plain object — _def.shape
+    const schemaWithDef = schema as unknown as {
+      _def?: {
+        shape?: unknown;
+      };
+    };
+
     const rawShape =
-      typeof schema._def?.shape === "function"
-        ? schema._def.shape()
-        : schema._def?.shape;
+      typeof (schemaWithDef._def?.shape as unknown) === "function"
+        ? (schemaWithDef._def?.shape as () => unknown)()
+        : schemaWithDef._def?.shape;
 
     if (!rawShape) return "";
 
-    return Object.entries(rawShape)
-      .map(([key, val]: [string, any]) => {
-        const typeName: string = val?._def?.typeName ?? "unknown";
+    return Object.entries(rawShape as Record<string, unknown>)
+      .map(([key, val]: [string, unknown]) => {
+        const valDef = val as unknown as {
+          _def?: {
+            typeName?: string;
+            innerType?: { _def?: { typeName?: string } };
+          };
+        };
+
+        const typeName: string = valDef._def?.typeName ?? "unknown";
         const optional = typeName === "ZodOptional";
         const innerType: string = optional
-          ? (val._def?.innerType?._def?.typeName ?? "unknown")
+          ? (valDef._def?.innerType?._def?.typeName ?? "unknown")
           : typeName;
         return `    ${key}${optional ? "?" : ""}: ${innerType.replace("Zod", "").toLowerCase()}`;
       })

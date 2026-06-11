@@ -99,7 +99,7 @@ Important:
         success: true,
         output: stdout.trim(),
       };
-    } catch (error: any) {
+    } catch (error) {
       logger.error(
         {
           tool: "terminal_execute",
@@ -109,13 +109,23 @@ Important:
         "Failed to execute command",
       );
 
-      const exitCode = error.code || 1;
+      const err = error as {
+        code?: unknown;
+        stdout?: unknown;
+        stderr?: unknown;
+        message?: unknown;
+      };
+
+      const exitCode = typeof err.code === "number" ? err.code : 1;
+      const stdout = typeof err.stdout === "string" ? err.stdout.trim() : "";
+      const stderr = typeof err.stderr === "string" ? err.stderr.trim() : "";
+      const message = typeof err.message === "string" ? err.message : "Unknown error";
 
       return {
         success: false,
-        output: error.stdout?.trim() || "",
+        output: stdout,
         // Surface the exit code inside the standard error string for the LLM
-        error: `Exit code ${exitCode}: ${error.stderr?.trim() || error.message || "Unknown error"}`,
+        error: `Exit code ${exitCode}: ${stderr || message}`,
       };
     }
   },

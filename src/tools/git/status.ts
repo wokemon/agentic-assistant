@@ -2,6 +2,7 @@ import { z } from "zod";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { logger } from "../../shared/logger";
+import type { ToolDefinition } from "../../shared/types";
 
 const execPromise = promisify(exec);
 
@@ -15,12 +16,14 @@ export const gitStatusSchema = z.object({
     ),
 });
 
-export const gitStatusTool = {
+type GitStatusArgs = z.infer<typeof gitStatusSchema>;
+
+export const gitStatusTool: ToolDefinition<GitStatusArgs> = {
   name: "git_status",
   description:
     "Check the current git repository status. Returns the current branch and a short-format list of staged, modified, and untracked files.",
   schema: gitStatusSchema,
-  execute: async (args: z.infer<typeof gitStatusSchema>) => {
+  execute: async (args) => {
     try {
       // 1. Get the current branch
       let branch = "Unknown";
@@ -53,14 +56,17 @@ export const gitStatusTool = {
         success: true,
         output: formattedOutput,
       };
-    } catch (error: any) {
-      logger.error({ error: error.message }, "Git status failed");
+    } catch (error) {
+      const err = error as { message?: unknown };
+      const message = typeof err.message === "string" ? err.message : "Unknown error";
+
+      logger.error({ error: message }, "Git status failed");
 
       // Catch "fatal: not a git repository" and similar errors gracefully
       return {
         success: false,
         output: "",
-        error: `Failed to get git status: ${error.message.split("\n")[0]}`,
+        error: `Failed to get git status: ${message.split("\n")[0]}`,
       };
     }
   },

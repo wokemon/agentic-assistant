@@ -12,7 +12,7 @@ import { runTestsTool } from "./testing/runTests";
 import { buildProjectTool } from "./project/build";
 import { findFilesTool } from "./filesystem/findFiles";
 
-export const tools: Record<string, ToolDefinition<any>> = {
+export const tools: Record<string, ToolDefinition<unknown>> = {
   [listFilesTool.name]: listFilesTool,
   [readFilesTool.name]: readFilesTool,
   [writeFilesTool.name]: writeFilesTool,

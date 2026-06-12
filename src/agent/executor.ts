@@ -5,6 +5,7 @@ import { PathValidation } from "../safety/pathValidation";
 import { SafetyBlockedError } from "../safety/errors";
 import type { FailureType } from "../shared/types";
 import type { ToolResult } from "../shared/types";
+import type { AgentEvent } from "../shared/types";
 
 const TOOL_TIMEOUT_MS = 10_000;
 
@@ -144,6 +145,7 @@ Fix the arguments and call '${toolName}' again.`;
 export async function executeToolCall(
   toolName: string,
   rawArgs: unknown,
+  onEvent?: (event: AgentEvent) => void,
 ): Promise<ToolResult> {
   const tool = tools[toolName];
 
@@ -152,7 +154,7 @@ export async function executeToolCall(
   if (!tool) {
     const availableTools = Object.keys(tools).join(", ");
 
-    return {
+    const result: ToolResult = {
       success: false,
       output: "",
       error: `Unknown tool: ${toolName}
@@ -163,6 +165,15 @@ ${availableTools}
 Choose one of the available tools.`,
       failureType: "validation",
     };
+
+    onEvent?.({
+      type: "tool_result",
+      tool: toolName,
+      result,
+      success: false,
+    });
+
+    return result;
   }
 
   const parsed = tool.schema.safeParse(rawArgs);
@@ -175,12 +186,21 @@ Choose one of the available tools.`,
       "Tool argument validation failed",
     );
 
-    return {
+    const result: ToolResult = {
       success: false,
       output: "",
       error,
       failureType: "validation",
     };
+
+    onEvent?.({
+      type: "tool_result",
+      tool: toolName,
+      result,
+      success: false,
+    });
+
+    return result;
   }
 
     try {
@@ -232,12 +252,21 @@ Choose one of the available tools.`,
         { tool: toolName, error: error.name, category: error.category },
         "Tool execution blocked by safety policy",
       );
-      return {
+      const result: ToolResult = {
         success: false,
         output: "",
         error: error.message,
         failureType: "safety",
       };
+
+      onEvent?.({
+        type: "tool_result",
+        tool: toolName,
+        result,
+        success: false,
+      });
+
+      return result;
     }
     throw error;
   }
@@ -278,6 +307,13 @@ Choose one of the available tools.`,
       "Tool execution completed",
     );
 
+    onEvent?.({
+      type: "tool_result",
+      tool: toolName,
+      result: normalizedResult,
+      success: normalizedResult.success,
+    });
+
     return normalizedResult;
   } catch (error) {
     const duration = Date.now() - startTime;
@@ -291,11 +327,20 @@ Choose one of the available tools.`,
     const rawErrorMessage =
       error instanceof Error ? error.message : "Unknown execution error";
 
-    return {
+    const result: ToolResult = {
       success: false,
       output: "",
       error: truncateOutput(rawErrorMessage, toolName),
       failureType: classifyError(error),
     };
+
+    onEvent?.({
+      type: "tool_result",
+      tool: toolName,
+      result,
+      success: false,
+    });
+
+    return result;
   }
 }

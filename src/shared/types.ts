@@ -82,3 +82,21 @@ export interface ToolDefinition<TArgs = unknown> {
 
   execute(args: TArgs): Promise<ToolResult>;
 }
+
+/* =========================
+   Agent Observability
+   ========================= */
+
+export type AgentEvent =
+  | { type: "iteration_start"; iteration: number }
+  | { type: "tool_call"; tool: string; args: unknown }
+  | {
+      type: "tool_result";
+      tool: string;
+      result: unknown;
+      success: boolean;
+    }
+  | { type: "reasoning"; text: string }
+  | { type: "final_answer"; text: string }
+  | { type: "error"; message: string }
+  | { type: "safety_stop"; reason: string };

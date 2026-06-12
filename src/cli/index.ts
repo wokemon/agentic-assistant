@@ -1,5 +1,6 @@
 import readline from "readline";
-import { runAgent } from "../agent/loop";
+import { WorkingMemory } from "../context/workingMemory";
+import { runAgentTask } from "../agent/runner";
 import { logger } from "../shared/logger";
 
 const rl = readline.createInterface({
@@ -17,7 +18,7 @@ async function main() {
   console.log("🤖 Agent ready. Type 'exit' to quit.\n");
 
   while (true) {
-    const input = await ask("> ");
+      const input = await ask("> ");
 
     if (input.trim().toLowerCase() === "exit") {
       console.log("Goodbye!");
@@ -30,7 +31,30 @@ async function main() {
 
     try {
       console.log("\n⏳ Running agent...\n");
-      const result = await runAgent(input);
+      const result = await runAgentTask(input, new WorkingMemory(), (event) => {
+        // Keep existing CLI summary output; add lightweight observability.
+        switch (event.type) {
+          case "iteration_start":
+            console.log(`🔁 Iteration ${event.iteration}`);
+            return;
+          case "tool_call":
+            console.log(`🛠️  Tool call: ${event.tool}`);
+            return;
+          case "tool_result":
+            console.log(
+              `✅ Tool result: ${event.tool} (success=${String(event.success)})`,
+            );
+            return;
+          case "error":
+            console.log(`❌ Agent error: ${event.message}`);
+            return;
+          case "safety_stop":
+            console.log(`🛑 Safety stop: ${event.reason}`);
+            return;
+          default:
+            return;
+        }
+      });
 
       console.log("📝 Agent response:\n");
 

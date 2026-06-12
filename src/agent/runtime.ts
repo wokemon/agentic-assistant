@@ -22,18 +22,29 @@ export class AgentRuntime {
 
   readonly diagnostics: AgentDiagnostics;
 
-  constructor() {
-    this.sessionId = crypto.randomUUID();
-    this.history = new MessageHistory();
-    this.memory = new WorkingMemory();
-    this.loopGuard = new LoopGuard();
-    this.state = createInitialAgentState();
-    this.diagnostics = {
-      sessionId: this.sessionId,
-      iterations: 0,
-      toolCalls: 0,
-      toolFailures: 0,
-      malformedResponses: 0,
-    };
+  constructor(
+    options?: Partial<{
+      sessionId: string;
+      history: MessageHistory;
+      memory: WorkingMemory;
+      loopGuard: LoopGuard;
+      state: AgentState;
+      diagnostics: AgentDiagnostics;
+    }>,
+  ) {
+    this.sessionId = options?.sessionId ?? crypto.randomUUID();
+    this.history = options?.history ?? new MessageHistory();
+    this.memory = options?.memory ?? new WorkingMemory();
+    this.loopGuard = options?.loopGuard ?? new LoopGuard();
+    this.state = options?.state ?? createInitialAgentState();
+    this.diagnostics =
+      options?.diagnostics ??
+      {
+        sessionId: this.sessionId,
+        iterations: 0,
+        toolCalls: 0,
+        toolFailures: 0,
+        malformedResponses: 0,
+      };
   }
 }

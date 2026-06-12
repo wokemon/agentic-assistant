@@ -1,6 +1,7 @@
 import { executeToolCall } from "../executor";
 import { AgentRuntime } from "../runtime";
 import type { AgentResult } from "../../shared/types";
+import type { AgentEvent } from "../../shared/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ export async function processToolCall(
   toolName: string,
   args: Record<string, unknown>,
   runtime: AgentRuntime,
+  onEvent?: (event: AgentEvent) => void,
 ): Promise<ToolProcessorOutcome> {
   const { state, history, memory, loopGuard, diagnostics } = runtime;
 
@@ -158,7 +160,7 @@ Read one before performing more searches.
   let result: { success: boolean; output?: string; error?: string };
 
   try {
-    result = await executeToolCall(toolName, args);
+      result = await executeToolCall(toolName, args, onEvent);
   } catch (error) {
     result = {
       success: false,

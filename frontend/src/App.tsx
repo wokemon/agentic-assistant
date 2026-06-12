@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 
 import type { AgentEvent, SessionDetailsResponse } from "./types";
@@ -107,9 +107,10 @@ function safetyBanner(reason: string): TimelineBannerItem {
       id: crypto.randomUUID(),
       tone: "danger",
       title: "Loop guard stop",
-      message: reason === "max_iterations"
-        ? "The agent hit its iteration limit."
-        : "The agent stopped after repeated tool failures.",
+      message:
+        reason === "max_iterations"
+          ? "The agent hit its iteration limit."
+          : "The agent stopped after repeated tool failures.",
     };
   }
 
@@ -158,7 +159,10 @@ function buildTimelineFromEvents(events: AgentEvent[]): TimelineItem[] {
     if (ev.type === "tool_result") {
       const idx = [...cards]
         .reverse()
-        .findIndex((c) => c.kind === "tool" && c.tool === ev.tool && c.status === "pending");
+        .findIndex(
+          (c) =>
+            c.kind === "tool" && c.tool === ev.tool && c.status === "pending",
+        );
       if (idx === -1) continue;
       const realIdx = cards.length - 1 - idx;
       const existing = cards[realIdx];
@@ -246,7 +250,9 @@ export default function App() {
         if (list.length > 0) setActiveSessionId(list[0].id);
       })
       .catch((err) => {
-        setBanner(`Failed to load sessions: ${err instanceof Error ? err.message : String(err)}`);
+        setBanner(
+          `Failed to load sessions: ${err instanceof Error ? err.message : String(err)}`,
+        );
       });
   }, []);
 
@@ -269,7 +275,9 @@ export default function App() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setBanner(`Failed to load session: ${err instanceof Error ? err.message : String(err)}`);
+        setBanner(
+          `Failed to load session: ${err instanceof Error ? err.message : String(err)}`,
+        );
       });
     return () => {
       cancelled = true;
@@ -303,22 +311,27 @@ export default function App() {
       await refreshSessions();
       setActiveSessionId(created.sessionId);
     } catch (err) {
-      setBanner(`Failed to create session: ${err instanceof Error ? err.message : String(err)}`);
+      setBanner(
+        `Failed to create session: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
   function pushChat(role: ChatItem["role"], content: string) {
-    setChat((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), role, content },
-    ]);
+    setChat((prev) => [...prev, { id: crypto.randomUUID(), role, content }]);
   }
 
-  function updateTimelineToolResult(tool: string, success: boolean, result: unknown) {
+  function updateTimelineToolResult(
+    tool: string,
+    success: boolean,
+    result: unknown,
+  ) {
     setTimeline((prev) => {
       const idx = [...prev]
         .reverse()
-        .findIndex((c) => c.kind === "tool" && c.tool === tool && c.status === "pending");
+        .findIndex(
+          (c) => c.kind === "tool" && c.tool === tool && c.status === "pending",
+        );
       if (idx === -1) return prev;
       const realIdx = prev.length - 1 - idx;
       const current = prev[realIdx];
@@ -501,7 +514,10 @@ export default function App() {
           </div>
           <div className="row">
             {details?.status === "interrupted" && !sending ? (
-              <button className="btn secondary" onClick={() => void retryLastTask()}>
+              <button
+                className="btn secondary"
+                onClick={() => void retryLastTask()}
+              >
                 Retry last task
               </button>
             ) : null}
@@ -522,7 +538,9 @@ export default function App() {
         <details
           className="diagnosticsPanel"
           open={showDiagnostics}
-          onToggle={(e) => setShowDiagnostics((e.target as HTMLDetailsElement).open)}
+          onToggle={(e) =>
+            setShowDiagnostics((e.target as HTMLDetailsElement).open)
+          }
         >
           <summary>Diagnostics</summary>
           <div className="diagnosticsGrid">
@@ -563,7 +581,9 @@ export default function App() {
                 {chat.map((m) => (
                   <div
                     key={m.id}
-                    className={"bubble " + (m.role === "user" ? "user" : "assistant")}
+                    className={
+                      "bubble " + (m.role === "user" ? "user" : "assistant")
+                    }
                   >
                     {m.role === "user" ? (
                       <div>{m.content}</div>
@@ -590,7 +610,7 @@ export default function App() {
 
             <div className="panelBody">
               <div className="timeline">
-                {timeline.map((c) => (
+                {timeline.map((c) =>
                   c.kind === "tool" ? (
                     <div key={c.id} className="card">
                       {c.reasoningNotes.length > 0 ? (
@@ -639,15 +659,12 @@ export default function App() {
                       )}
                     </div>
                   ) : (
-                    <div
-                      key={c.id}
-                      className={`timelineBanner ${c.tone}`}
-                    >
+                    <div key={c.id} className={`timelineBanner ${c.tone}`}>
                       <div style={{ fontWeight: 900 }}>{c.title}</div>
                       <div className="muted">{c.message}</div>
                     </div>
-                  )
-                ))}
+                  ),
+                )}
               </div>
             </div>
           </div>
@@ -659,14 +676,20 @@ export default function App() {
             value={task}
             disabled={!activeSessionId || sending}
             onChange={(e) => setTask(e.target.value)}
-            placeholder={activeSessionId ? "Enter a task" : "Create a session to begin"}
+            placeholder={
+              activeSessionId ? "Enter a task" : "Create a session to begin"
+            }
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 void sendTask();
               }
             }}
           />
-          <button className="btn" disabled={!activeSessionId || sending} onClick={() => void sendTask()}>
+          <button
+            className="btn"
+            disabled={!activeSessionId || sending}
+            onClick={() => void sendTask()}
+          >
             {sending ? "Running..." : "Send"}
           </button>
         </div>

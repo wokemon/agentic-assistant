@@ -108,6 +108,36 @@ Investigate why the build is failing
 
 ---
 
+## Running the Server (SSE)
+
+Start the HTTP API server:
+
+```bash
+pnpm dev:server
+```
+
+For local SSE smoke-testing without an OpenAI key, you can enable a mock agent:
+
+```bash
+AGENT_MOCK=1 pnpm dev:server
+```
+
+Default port is `3001` (override with `PORT`).
+
+SSE example:
+
+```bash
+sessionId=$(curl -s -X POST http://localhost:3001/api/sessions | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).sessionId")
+curl -N \
+  -H "Content-Type: application/json" \
+  -X POST "http://localhost:3001/api/sessions/${sessionId}/messages" \
+  -d '{"task":"list files"}'
+```
+
+The response will be a stream of `AgentEvent` JSON objects (SSE `data:` frames) and a final `event: done` frame.
+
+---
+
 ## Building
 
 ```bash

@@ -1,11 +1,12 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import crypto from "crypto";
 import type { AgentEvent, AgentResult } from "../../shared/types";
-import { WorkingMemory } from "../../context/workingMemory";
+import type { SessionState } from "../../agent/runner";
+import type { FileSessionStore } from "../store/fileSessionStore";
 
 type AgentTaskFn = (
   task: string,
-  session: WorkingMemory,
+  session: SessionState,
   onEvent: (event: AgentEvent) => void,
 ) => Promise<AgentResult>;
 
@@ -18,7 +19,7 @@ function sseWriteDone(reply: FastifyReply) {
 }
 
 type SessionsStore = {
-  sessions: Map<string, WorkingMemory>;
+  sessionStore: FileSessionStore;
   agentTask: AgentTaskFn;
 };
 
@@ -28,11 +29,10 @@ type MessagesBody = {
 
 export function registerSessionsRoutes(
   app: FastifyInstance,
-  { sessions, agentTask }: SessionsStore,
+  { sessionStore, agentTask }: SessionsStore,
 ) {
   app.post("/api/sessions", async () => {
-    const sessionId = crypto.randomUUID();
-    sessions.set(sessionId, new WorkingMemory());
+    const { sessionId } = await sessionStore.createSession();
     return { sessionId };
   });
 
@@ -43,11 +43,19 @@ export function registerSessionsRoutes(
     const { id } = request.params;
     const { task } = request.body;
 
-    const session = sessions.get(id);
-    if (!session) {
+    let sessionRecord: Awaited<ReturnType<FileSessionStore["getSession"]>>;
+    try {
+      sessionRecord = await sessionStore.getSession(id);
+    } catch {
       reply.code(404);
       return { error: "Unknown session" };
     }
+
+    const session = sessionRecord.session;
+
+    // Mark this session as running so a restart can flag it as interrupted.
+    const runId = crypto.randomUUID();
+    await sessionStore.markInProgress(id, runId);
 
     reply.raw.setHeader("Content-Type", "text/event-stream");
     reply.raw.setHeader("Cache-Control", "no-cache");
@@ -63,12 +71,18 @@ export function registerSessionsRoutes(
       : 60_000;
 
     let finished = false;
+    let ended = false;
     let timer: NodeJS.Timeout | undefined;
 
     const finishStream = () => {
       if (finished) return;
       finished = true;
       sseWriteDone(reply);
+    };
+
+    const endStream = () => {
+      if (ended) return;
+      ended = true;
       reply.raw.end();
     };
 
@@ -96,7 +110,23 @@ export function registerSessionsRoutes(
       // `onEvent` should already have emitted an `error` event from the runner.
     } finally {
       if (timer) clearTimeout(timer);
+
+      // Emit the final SSE frame before persisting the session.
       finishStream();
+
+      const shouldSetTitle = !sessionRecord.title;
+      const normalizedTaskTitle = shouldSetTitle
+        ? task.replace(/\s+/g, " ").trim().slice(0, 60)
+        : undefined;
+
+      // Persist the in-memory mutations from this run.
+      await sessionStore.markCompleted({
+        id,
+        title: normalizedTaskTitle,
+        session,
+      });
+
+      endStream();
     }
 
     return reply;
@@ -106,15 +136,27 @@ export function registerSessionsRoutes(
     Params: { id: string };
   }>("/api/sessions/:id", async (request) => {
     const { id } = request.params;
-    if (!sessions.has(id)) {
+    try {
+      const record = await sessionStore.getSession(id);
+      return {
+        sessionId: id,
+        status: record.status,
+        title: record.title,
+        lastActiveAt: record.lastActiveAt,
+        createdAt: record.createdAt,
+        history: record.session.history.getAll(),
+      };
+    } catch {
       return { error: "Unknown session", status: "unknown" };
     }
+  });
 
-    // Phase 2 will add persistence for history/status.
-    return {
-      sessionId: id,
-      status: "unknown",
-      history: [],
-    };
+  app.get("/api/sessions", async () => {
+    const sessionsList = await sessionStore.listSessions();
+    return sessionsList.map((s) => ({
+      id: s.id,
+      title: s.title,
+      lastActiveAt: s.lastActiveAt,
+    }));
   });
 }

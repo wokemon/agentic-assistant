@@ -19,6 +19,20 @@ export class MessageHistory {
     return [...this.messages];
   }
 
+  toState(): { maxRetained: number; messages: Message[] } {
+    return { maxRetained: this.maxRetained, messages: [...this.messages] };
+  }
+
+  static fromState(state: {
+    maxRetained: number;
+    messages: Message[];
+  }): MessageHistory {
+    const history = new MessageHistory(state.maxRetained);
+    history.messages = [...state.messages];
+    history.enforceSlidingWindow();
+    return history;
+  }
+
   clear() {
     this.messages = [];
   }

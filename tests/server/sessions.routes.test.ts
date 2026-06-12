@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 
 import { buildServer } from "../../src/server";
 
@@ -6,22 +9,33 @@ import type { AgentEvent, AgentResult } from "../../src/shared/types";
 
 describe("sessions routes", () => {
   let app: ReturnType<typeof buildServer>;
+  let sessionStoreDir: string | undefined;
 
   afterEach(async () => {
-    await app.close();
+    await app?.close();
+    if (sessionStoreDir) {
+      await fs.rm(sessionStoreDir, { recursive: true, force: true });
+    }
   });
 
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
+  async function newApp(agentTask: any) {
+    sessionStoreDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "agentic-assistant-sessions-"),
+    );
+    app = buildServer({
+      agentTask,
+      sessionStoreDir,
+    });
+    await app.ready();
+  }
+
   it("POST /api/sessions returns a sessionId", async () => {
     const agentTask = vi.fn();
-    app = buildServer({
-      agentTask: agentTask as any,
-    });
-
-    await app.ready();
+    await newApp(agentTask as any);
 
     const res = await app.inject({
       method: "POST",
@@ -68,8 +82,7 @@ describe("sessions routes", () => {
       return result;
     });
 
-    app = buildServer({ agentTask: agentTask as any });
-    await app.ready();
+    await newApp(agentTask as any);
 
     const createRes = await app.inject({
       method: "POST",

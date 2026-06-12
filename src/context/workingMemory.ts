@@ -69,6 +69,19 @@ export class WorkingMemory {
     };
   }
 
+  // Persistable representation of the working memory.
+  toState() {
+    return this.getState();
+  }
+
+  static fromState(state: ReturnType<WorkingMemory["getState"]>) {
+    const wm = new WorkingMemory();
+    wm.facts = new Set(state.facts);
+    wm.openedFiles = [...state.openedFiles];
+    wm.summaries = [...state.summaries];
+    return wm;
+  }
+
   // Reset memory state completely
   clear() {
     this.facts.clear();

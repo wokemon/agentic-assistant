@@ -2,13 +2,13 @@ import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { registerSessionsRoutes } from "./routes/sessions";
-import type { WorkingMemory } from "../context/workingMemory";
-import { WorkingMemory as WorkingMemoryClass } from "../context/workingMemory";
 import type { AgentEvent, AgentResult } from "../shared/types";
+import type { SessionState } from "../agent/runner";
+import { createSessionStore, type FileSessionStore } from "./store";
 
 export type AgentTaskFn = (
   task: string,
-  session: WorkingMemory,
+  session: SessionState,
   onEvent: (event: AgentEvent) => void,
 ) => Promise<AgentResult>;
 
@@ -37,7 +37,7 @@ function getMockRunAgentTask(): AgentTaskFn {
   };
 }
 
-export function buildServer(opts?: { agentTask?: AgentTaskFn }) {
+export function buildServer(opts?: { agentTask?: AgentTaskFn; sessionStoreDir?: string }) {
   const fastify = Fastify({ logger: false });
 
   fastify.register(cors, {
@@ -55,7 +55,9 @@ export function buildServer(opts?: { agentTask?: AgentTaskFn }) {
     return { ok: true };
   });
 
-  const sessions = new Map<string, WorkingMemoryClass>();
+  const sessionStore: FileSessionStore = createSessionStore({
+    directory: opts?.sessionStoreDir,
+  });
 
   const useMock =
     process.env.USE_MOCK_LLM === "true" ||
@@ -71,7 +73,7 @@ export function buildServer(opts?: { agentTask?: AgentTaskFn }) {
       }));
 
   registerSessionsRoutes(fastify, {
-    sessions,
+    sessionStore,
     agentTask,
   });
 

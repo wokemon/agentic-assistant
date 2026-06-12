@@ -94,4 +94,32 @@ export class LoopGuard {
       parseFailures: this.parseFailureCount,
     };
   }
+
+  toState(): {
+    recentActions: ToolSignature[];
+    failedActions: ToolSignature[];
+    parseFailureCount: number;
+    totalExecutions: number;
+  } {
+    return {
+      recentActions: [...this.recentActions],
+      failedActions: [...this.failedActions],
+      parseFailureCount: this.parseFailureCount,
+      totalExecutions: this.totalExecutions,
+    };
+  }
+
+  static fromState(state: {
+    recentActions: ToolSignature[];
+    failedActions: ToolSignature[];
+    parseFailureCount: number;
+    totalExecutions: number;
+  }): LoopGuard {
+    const guard = new LoopGuard();
+    guard.recentActions = [...state.recentActions];
+    guard.failedActions = [...state.failedActions];
+    guard.parseFailureCount = state.parseFailureCount;
+    guard.totalExecutions = state.totalExecutions;
+    return guard;
+  }
 }

@@ -21,6 +21,7 @@ function makeInput(overrides: Partial<FinalAnswerValidationInput> = {}): FinalAn
     } as AgentState,
     memory: {
       hasOpenedFile: () => false,
+      getOpenedFiles: () => [],
     } as unknown as WorkingMemory,
     toolCalls: 0,
     ...overrides,
@@ -160,6 +161,29 @@ describe("validateFinalAnswer", () => {
         hasOpenedFile: () => true,
       } as unknown as WorkingMemory,
     });
+    const result = validateFinalAnswer(input);
+    expect(result).toEqual({ valid: true });
+  });
+
+  it("returns valid when requested basename matches an opened file path", () => {
+    const input = makeInput({
+      userInput: "explain what registry.ts does",
+      finalAnswer: "registry.ts defines the tool registry map.",
+      toolCalls: 2,
+      state: {
+        malformedCount: 0,
+        verificationEvidence: false,
+        repositoryInspected: true,
+        consecutiveDiscoveryActions: 0,
+        searchesSinceRead: 0,
+        discoveryStormWarned: false,
+      } as AgentState,
+      memory: {
+        hasOpenedFile: () => false,
+        getOpenedFiles: () => [{ path: "src/tools/registry.ts" }],
+      } as unknown as WorkingMemory,
+    });
+
     const result = validateFinalAnswer(input);
     expect(result).toEqual({ valid: true });
   });

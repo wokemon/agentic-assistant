@@ -135,6 +135,22 @@ Do not answer from assumptions about file contents.`,
     !memory.hasOpenedFile(requestedFile) &&
     !isReportingNotFound(finalAnswer)
   ) {
+    const requestedHasPath = requestedFile.includes("/") || requestedFile.includes("\\");
+
+    // If the user asked for just the basename (e.g. `registry.ts`), allow it to
+    // satisfy evidence provided via any opened file that ends with that basename
+    // (e.g. `src/tools/registry.ts`).
+    const openedFiles = (memory as unknown as { getOpenedFiles?: () => { path: string }[] })
+      .getOpenedFiles?.();
+
+    const matchesByBasename =
+      !requestedHasPath &&
+      (openedFiles ?? []).some(
+        (f) =>
+          f.path.split(/[/\\]/).pop() === requestedFile,
+      );
+
+    if (!matchesByBasename) {
     return {
       valid: false,
       message: `The user explicitly requested analysis of:
@@ -145,6 +161,7 @@ You have not read that file yet.
 
 Locate and read the file before answering.`,
     };
+    }
   }
 
   return { valid: true };

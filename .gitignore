@@ -190,3 +190,7 @@ temp/
 
 # Agentic assistant session persistence
 /.sessions/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

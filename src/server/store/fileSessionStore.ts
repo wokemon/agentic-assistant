@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 
-import type { AgentDiagnostics } from "../../shared/types";
+import type { AgentDiagnostics, AgentEvent } from "../../shared/types";
 import { createInitialAgentState, type AgentState } from "../../agent/state";
 import type { SessionState } from "../../agent/runner";
 import { LoopGuard } from "../../safety/loopGuards";
@@ -30,7 +30,11 @@ type PersistedSessionFileV1 = {
     title?: string;
     inProgress: boolean;
     agentRunId?: string;
-    status: "active" | "completed";
+    status: "active" | "completed" | "interrupted";
+  };
+  conversation: {
+    userTasks: string[];
+    events: AgentEvent[];
   };
   session: {
     memory: WorkingMemoryState;
@@ -119,6 +123,10 @@ export class FileSessionStore {
         inProgress: false,
         status: "active",
       },
+      conversation: {
+        userTasks: [],
+        events: [],
+      },
       session: {
         memory: memory.toState(),
         history: history.toState(),
@@ -143,7 +151,7 @@ export class FileSessionStore {
   }
 
   private toStatus(file: PersistedSessionFileV1): AgentStatus {
-    return file.metadata.inProgress ? "interrupted" : file.metadata.status;
+    return file.metadata.inProgress ? "active" : file.metadata.status;
   }
 
   private reconstructSession(file: PersistedSessionFileV1): SessionState {
@@ -167,6 +175,9 @@ export class FileSessionStore {
     createdAt: string;
     lastActiveAt: string;
     session: SessionState;
+    userTasks: string[];
+    events: AgentEvent[];
+    diagnostics: AgentDiagnostics;
   }> {
     await this.init();
     try {
@@ -178,6 +189,9 @@ export class FileSessionStore {
         createdAt: file.metadata.createdAt,
         lastActiveAt: file.metadata.lastActiveAt,
         session: this.reconstructSession(file),
+        userTasks: file.conversation.userTasks,
+        events: file.conversation.events,
+        diagnostics: file.session.diagnostics,
       };
     } catch (err) {
       // Normalize missing session into a consistent error.
@@ -225,13 +239,17 @@ export class FileSessionStore {
     return sessions;
   }
 
-  async markInProgress(id: string, agentRunId: string) {
+  async markInProgress(id: string, agentRunId: string, title?: string) {
     await this.init();
     const file = await this.readFile(id);
     file.metadata.inProgress = true;
     file.metadata.agentRunId = agentRunId;
     file.metadata.status = "active";
     file.metadata.lastActiveAt = isoNow();
+
+    if (!file.metadata.title && title) {
+      file.metadata.title = title;
+    }
     await this.writeFileAtomic(this.getFilePath(id), file);
   }
 
@@ -239,9 +257,14 @@ export class FileSessionStore {
     id: string;
     title?: string;
     session: SessionState;
+    userTask: string;
+    events: AgentEvent[];
   }) {
     await this.init();
     const file = await this.readFile(opts.id);
+
+    file.conversation.userTasks.push(opts.userTask);
+    file.conversation.events.push(...opts.events);
 
     // Update persisted session state.
     file.session.memory = opts.session.memory.toState();
@@ -258,6 +281,37 @@ export class FileSessionStore {
     file.metadata.inProgress = false;
     file.metadata.agentRunId = undefined;
     file.metadata.status = "completed";
+    file.metadata.lastActiveAt = isoNow();
+
+    await this.writeFileAtomic(this.getFilePath(opts.id), file);
+  }
+
+  async markInterrupted(opts: {
+    id: string;
+    title?: string;
+    session: SessionState;
+    userTask: string;
+    events: AgentEvent[];
+  }) {
+    await this.init();
+    const file = await this.readFile(opts.id);
+
+    file.conversation.userTasks.push(opts.userTask);
+    file.conversation.events.push(...opts.events);
+
+    file.session.memory = opts.session.memory.toState();
+    file.session.history = opts.session.history.toState();
+    file.session.loopGuard = opts.session.loopGuard.toState();
+    file.session.state = opts.session.state;
+    file.session.diagnostics = opts.session.diagnostics;
+
+    if (!file.metadata.title && opts.title) {
+      file.metadata.title = opts.title;
+    }
+
+    file.metadata.inProgress = false;
+    file.metadata.agentRunId = undefined;
+    file.metadata.status = "interrupted";
     file.metadata.lastActiveAt = isoNow();
 
     await this.writeFileAtomic(this.getFilePath(opts.id), file);

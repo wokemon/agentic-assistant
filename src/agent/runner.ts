@@ -52,6 +52,7 @@ export async function runAgentTask(
   task: string,
   session: WorkingMemory | SessionState,
   onEvent: (event: AgentEvent) => void,
+  opts?: { signal?: AbortSignal },
 ): Promise<AgentResult> {
   const runtime = isWorkingMemory(session)
     ? new AgentRuntime({ memory: session })
@@ -71,7 +72,26 @@ export async function runAgentTask(
 
   agentLogger.info({ task }, "Starting agent run");
 
+  function abortReason(): AgentResult["status"] {
+    const reason = opts?.signal?.reason;
+    return typeof reason === "string" ? (reason as AgentResult["status"]) : "user_cancelled";
+  }
+
+  function abortResult(): AgentResult {
+    const status = abortReason();
+    onEvent({ type: "safety_stop", reason: status });
+    return { status, diagnostics: runtime.diagnostics };
+  }
+
+  if (opts?.signal?.aborted) {
+    return abortResult();
+  }
+
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    if (opts?.signal?.aborted) {
+      return abortResult();
+    }
+
     runtime.diagnostics.iterations = iteration + 1;
 
     onEvent({ type: "iteration_start", iteration: iteration + 1 });
@@ -87,8 +107,13 @@ export async function runAgentTask(
     let rawResponse: string;
 
     try {
-      rawResponse = await generateResponse(context);
+      rawResponse = await generateResponse(context, opts?.signal);
     } catch (error) {
+      if (opts?.signal?.aborted) {
+        agentLogger.warn({ reason: opts.signal.reason }, "Agent aborted during LLM request");
+        return abortResult();
+      }
+
       if (
         error instanceof Error &&
         error.name === "ContextBudgetExceededError"
@@ -109,6 +134,10 @@ export async function runAgentTask(
         message: error instanceof Error ? error.message : "Unknown error",
       });
       throw error;
+    }
+
+    if (opts?.signal?.aborted) {
+      return abortResult();
     }
 
     // ── Parse response ───────────────────────────────────────────────────────
@@ -190,6 +219,7 @@ export async function runAgentTask(
         args,
         runtime,
         onEvent,
+        opts?.signal,
       );
 
       if (outcome.kind === "abort") {

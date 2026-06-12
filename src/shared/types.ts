@@ -36,7 +36,10 @@ export type AgentStatus =
   | "parse_failure"
   | "context_budget_exceeded"
   | "malformed_response"
-  | "too_many_tool_failures";
+  | "too_many_tool_failures"
+  | "server_timeout"
+  | "user_cancelled"
+  | "client_disconnected";
 
 export interface AgentDiagnostics {
   sessionId: string;

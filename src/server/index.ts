@@ -10,6 +10,7 @@ export type AgentTaskFn = (
   task: string,
   session: SessionState,
   onEvent: (event: AgentEvent) => void,
+  opts?: { signal?: AbortSignal },
 ) => Promise<AgentResult>;
 
 function getMockRunAgentTask(): AgentTaskFn {
@@ -23,11 +24,11 @@ function getMockRunAgentTask(): AgentTaskFn {
       result: { output: "a.ts\nb.ts" },
     });
     onEvent({ type: "final_answer", text: "mock answer" });
-    return {
-      status: "completed",
-      finalAnswer: "mock answer",
-      diagnostics: {
-        sessionId: "mock",
+      return {
+        status: "completed",
+        finalAnswer: "mock answer",
+        diagnostics: {
+          sessionId: "mock",
         iterations: 1,
         toolCalls: 0,
         toolFailures: 0,

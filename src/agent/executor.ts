@@ -146,6 +146,7 @@ export async function executeToolCall(
   toolName: string,
   rawArgs: unknown,
   onEvent?: (event: AgentEvent) => void,
+  signal?: AbortSignal,
 ): Promise<ToolResult> {
   const tool = tools[toolName];
 
@@ -273,6 +274,21 @@ Choose one of the available tools.`,
 
   const startTime = Date.now();
 
+  const abortPromise = signal
+    ? new Promise<ToolResult>((_, reject) => {
+        if (signal.aborted) {
+          reject(signal.reason ?? new Error("Aborted"));
+          return;
+        }
+
+        signal.addEventListener(
+          "abort",
+          () => reject(signal.reason ?? new Error("Aborted")),
+          { once: true },
+        );
+      })
+    : null;
+
   try {
     logger.info({ tool: toolName }, "Executing tool");
 
@@ -285,6 +301,7 @@ Choose one of the available tools.`,
           reject(new Error("Tool execution timed out"));
         }, TOOL_TIMEOUT_MS),
       ),
+      ...(abortPromise ? [abortPromise] : []),
     ])) as ToolResult;
 
     const duration = Date.now() - startTime;

@@ -1,0 +1,307 @@
+:root {
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+    Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+}
+
+.container {
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 280px;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebarHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.sidebarContent {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sessionList {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.columns {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel:last-child {
+  border-right: none;
+}
+
+.panelHeader {
+  flex: 0 0 auto;
+}
+
+.panelBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn.secondary {
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+}
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.bubble {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.bubble.user {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.bubble.assistant {
+  background: #ffffff;
+}
+
+.banner {
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  border-radius: 10px;
+  color: #991b1b;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.card {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pill {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+  background: #f8fafc;
+  white-space: nowrap;
+}
+
+.pill.ok {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.pill.bad {
+  background: #fff1f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.reasoning {
+  font-size: 12px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.muted {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.sessionItem {
+  padding: 10px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  background: #ffffff;
+}
+
+.sessionItem.active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.sessionTitle {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.sessionMeta {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.composer {
+  padding: 12px 16px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.diagnosticsPanel {
+  margin: 0 16px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px 12px;
+  flex: 0 0 auto;
+}
+
+.diagnosticsPanel summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.diagnosticsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.timelineBanner {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.timelineBanner.warn {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.timelineBanner.danger {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.timelineBanner.muted {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.timelineBanner.info {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+@media (max-width: 900px) {
+  .diagnosticsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

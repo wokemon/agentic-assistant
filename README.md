@@ -138,6 +138,25 @@ The response will be a stream of `AgentEvent` JSON objects (SSE `data:` frames) 
 
 ---
 
+## Web UI (Phase 3)
+
+Run backend + frontend together:
+
+```bash
+pnpm dev:web
+```
+
+- Backend: `http://localhost:3001`
+- Frontend: `http://localhost:5173`
+
+Tip: for local SSE smoke-testing without an OpenAI key, run:
+
+```bash
+AGENT_MOCK=1 pnpm dev:web
+```
+
+---
+
 ## Building
 
 ```bash

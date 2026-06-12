@@ -8,7 +8,15 @@ type AgentTaskFn = (
   task: string,
   session: SessionState,
   onEvent: (event: AgentEvent) => void,
+  opts?: { signal?: AbortSignal },
 ) => Promise<AgentResult>;
+
+type ActiveRun = {
+  controller: AbortController;
+  runId: string;
+};
+
+const activeRuns = new Map<string, ActiveRun>();
 
 function sseWriteData(reply: FastifyReply, event: AgentEvent) {
   reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -55,7 +63,14 @@ export function registerSessionsRoutes(
 
     // Mark this session as running so a restart can flag it as interrupted.
     const runId = crypto.randomUUID();
-    await sessionStore.markInProgress(id, runId);
+    const shouldSetTitle = !sessionRecord.title;
+    const normalizedTaskTitle = shouldSetTitle
+      ? task.replace(/\s+/g, " ").trim().slice(0, 60)
+      : undefined;
+    await sessionStore.markInProgress(id, runId, normalizedTaskTitle);
+
+    const controller = new AbortController();
+    activeRuns.set(id, { controller, runId });
 
     reply.raw.setHeader("Content-Type", "text/event-stream");
     reply.raw.setHeader("Cache-Control", "no-cache");
@@ -63,16 +78,17 @@ export function registerSessionsRoutes(
     // Prevent Fastify from setting its own content-type.
     reply.raw.flushHeaders?.();
 
-    const timeoutSeconds = process.env.AGENT_SERVER_TIMEOUT_SECONDS
-      ? Number(process.env.AGENT_SERVER_TIMEOUT_SECONDS)
-      : 60;
-    const timeoutMs = Number.isFinite(timeoutSeconds)
-      ? timeoutSeconds * 1000
-      : 60_000;
-
     let finished = false;
     let ended = false;
     let timer: NodeJS.Timeout | undefined;
+
+    const onClose = () => {
+      if (!finished && !controller.signal.aborted) {
+        controller.abort("client_disconnected");
+      }
+    };
+
+    reply.raw.once("close", onClose);
 
     const finishStream = () => {
       if (finished) return;
@@ -86,45 +102,64 @@ export function registerSessionsRoutes(
       reply.raw.end();
     };
 
+    const runEvents: AgentEvent[] = [];
+    let agentResult: AgentResult | undefined;
+
     const onEvent = (event: AgentEvent) => {
       if (finished) return;
+      runEvents.push(event);
       sseWriteData(reply, event);
     };
 
     try {
-      const agentPromise = agentTask(task, session, onEvent);
+      const timeoutSeconds = process.env.AGENT_SERVER_TIMEOUT_SECONDS
+        ? Number(process.env.AGENT_SERVER_TIMEOUT_SECONDS)
+        : 60;
+      const timeoutMs = Number.isFinite(timeoutSeconds)
+        ? timeoutSeconds * 1000
+        : 60_000;
 
-      const timeoutPromise = new Promise<void>((resolve) => {
-        timer = setTimeout(() => {
-          onEvent({
-            type: "safety_stop",
-            reason: "server_timeout",
-          });
-          finishStream();
-          resolve();
-        }, timeoutMs);
+      timer = setTimeout(() => {
+        if (!controller.signal.aborted) {
+          controller.abort("server_timeout");
+        }
+      }, timeoutMs);
+
+      agentResult = await agentTask(task, session, onEvent, {
+        signal: controller.signal,
       });
-
-      await Promise.race([agentPromise, timeoutPromise]);
     } catch {
       // `onEvent` should already have emitted an `error` event from the runner.
     } finally {
       if (timer) clearTimeout(timer);
+      reply.raw.off("close", onClose);
+      activeRuns.delete(id);
+
+      if (agentResult?.diagnostics) {
+        session.diagnostics = agentResult.diagnostics;
+      }
 
       // Emit the final SSE frame before persisting the session.
       finishStream();
 
-      const shouldSetTitle = !sessionRecord.title;
-      const normalizedTaskTitle = shouldSetTitle
-        ? task.replace(/\s+/g, " ").trim().slice(0, 60)
-        : undefined;
-
       // Persist the in-memory mutations from this run.
-      await sessionStore.markCompleted({
-        id,
-        title: normalizedTaskTitle,
-        session,
-      });
+      if (controller.signal.aborted) {
+        await sessionStore.markInterrupted({
+          id,
+          title: normalizedTaskTitle,
+          session,
+          userTask: task,
+          events: runEvents,
+        });
+      } else {
+        await sessionStore.markCompleted({
+          id,
+          title: normalizedTaskTitle,
+          session,
+          userTask: task,
+          events: runEvents,
+        });
+      }
 
       endStream();
     }
@@ -145,10 +180,26 @@ export function registerSessionsRoutes(
         lastActiveAt: record.lastActiveAt,
         createdAt: record.createdAt,
         history: record.session.history.getAll(),
+        userTasks: record.userTasks,
+        events: record.events,
+        diagnostics: record.session.diagnostics,
       };
     } catch {
       return { error: "Unknown session", status: "unknown" };
     }
+  });
+
+  app.post<{
+    Params: { id: string };
+  }>("/api/sessions/:id/stop", async (request) => {
+    const { id } = request.params;
+    const active = activeRuns.get(id);
+    if (!active) {
+      return { stopped: false, reason: "no_active_run" };
+    }
+
+    active.controller.abort("user_cancelled");
+    return { stopped: true };
   });
 
   app.get("/api/sessions", async () => {

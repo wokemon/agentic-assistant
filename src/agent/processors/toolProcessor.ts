@@ -60,6 +60,18 @@ function buildDiscoveryFact(
   return `Tool ${toolName} discovered:\n${wrapToolOutput(output)}`;
 }
 
+function abortStatus(signal?: AbortSignal): AgentResult["status"] {
+  const reason = signal?.reason;
+  if (
+    reason === "server_timeout" ||
+    reason === "user_cancelled" ||
+    reason === "client_disconnected"
+  ) {
+    return reason;
+  }
+  return "user_cancelled";
+}
+
 // ─── Tool Processor ───────────────────────────────────────────────────────────
 
 export type ToolProcessorOutcome =
@@ -72,8 +84,19 @@ export async function processToolCall(
   args: Record<string, unknown>,
   runtime: AgentRuntime,
   onEvent?: (event: AgentEvent) => void,
+  signal?: AbortSignal,
 ): Promise<ToolProcessorOutcome> {
   const { state, history, memory, loopGuard, diagnostics } = runtime;
+
+  if (signal?.aborted) {
+    return {
+      kind: "abort",
+      result: {
+        status: abortStatus(signal),
+        diagnostics,
+      },
+    };
+  }
 
   // ── Discovery storm guards ─────────────────────────────────────────────────
 
@@ -160,8 +183,18 @@ Read one before performing more searches.
   let result: { success: boolean; output?: string; error?: string };
 
   try {
-      result = await executeToolCall(toolName, args, onEvent);
+    result = await executeToolCall(toolName, args, onEvent, signal);
   } catch (error) {
+    if (signal?.aborted) {
+      return {
+        kind: "abort",
+        result: {
+          status: abortStatus(signal),
+          diagnostics,
+        },
+      };
+    }
+
     result = {
       success: false,
       error: error instanceof Error ? error.message : "Unknown tool error",

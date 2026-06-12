@@ -84,7 +84,10 @@ function toOpenAIMessages(
 // EXECUTION LOGIC
 // -------------------------------------------------------------
 
-export async function generateResponse(messages: Message[]): Promise<string> {
+export async function generateResponse(
+  messages: Message[],
+  signal?: AbortSignal,
+): Promise<string> {
   const startTime = Date.now();
 
   // ----------------------------------------------------
@@ -110,11 +113,14 @@ export async function generateResponse(messages: Message[]): Promise<string> {
   );
 
   try {
-    const response = await client.chat.completions.create({
-      model,
-      messages: toOpenAIMessages(messages),
-      temperature: 0, // Deterministic generation
-    });
+    const response = await client.chat.completions.create(
+      {
+        model,
+        messages: toOpenAIMessages(messages),
+        temperature: 0, // Deterministic generation
+      },
+      signal ? { signal } : undefined,
+    );
 
     const content = response.choices[0]?.message?.content;
 

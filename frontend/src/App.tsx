@@ -243,6 +243,10 @@ export default function App() {
   const pendingReasoningRef = useRef<string[]>([]);
 
   useEffect(() => {
+    setTask("");
+  }, [activeSessionId]);
+
+  useEffect(() => {
     api
       .listSessions()
       .then((list) => {
@@ -427,6 +431,9 @@ export default function App() {
           // Backend marks session completion; next reload will reflect persisted state.
         },
       });
+
+      // Clear input immediately after a successful send completes.
+      setTask("");
     } finally {
       setSending(false);
       await refreshSessions().catch(() => {});

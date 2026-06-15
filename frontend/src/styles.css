@@ -258,14 +258,22 @@ body {
   padding: 12px 16px;
   border-top: 1px solid #e2e8f0;
   display: flex;
+  align-items: flex-end;
   gap: 10px;
   flex: 0 0 auto;
 }
 
 .composer textarea.input {
+  flex: 1;
+  width: auto;
   max-height: 200px;
   overflow-y: auto;
   resize: none;
+}
+
+.composer .btn {
+  flex: 0 0 auto;
+  align-self: flex-end;
 }
 
 .diagnosticsPanel {

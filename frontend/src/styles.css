@@ -151,6 +151,7 @@ body {
   flex-direction: column;
   gap: 12px;
   min-height: 0;
+  flex: 1;
 }
 
 .bubble {
@@ -259,6 +260,12 @@ body {
   display: flex;
   gap: 10px;
   flex: 0 0 auto;
+}
+
+.composer textarea.input {
+  max-height: 200px;
+  overflow-y: auto;
+  resize: none;
 }
 
 .diagnosticsPanel {

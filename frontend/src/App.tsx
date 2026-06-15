@@ -241,10 +241,34 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const lastTaskRef = useRef<string>("");
   const pendingReasoningRef = useRef<string[]>([]);
+  const taskTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const MAX_TEXTAREA_HEIGHT_PX = 200;
+
+  function resizeTaskTextarea(el: HTMLTextAreaElement | null) {
+    if (!el) return;
+
+    // Standard autosize: reset to auto, then expand to scrollHeight.
+    el.style.height = "auto";
+
+    const scrollHeight = el.scrollHeight;
+    const nextHeight = Math.min(scrollHeight, MAX_TEXTAREA_HEIGHT_PX);
+    el.style.height = `${nextHeight}px`;
+
+    // Ensure we scroll instead of growing past the max.
+    el.style.overflowY =
+      scrollHeight > MAX_TEXTAREA_HEIGHT_PX ? "auto" : "hidden";
+  }
 
   useEffect(() => {
     setTask("");
   }, [activeSessionId]);
+
+  useEffect(() => {
+    if (task !== "") return;
+    // When the textarea is cleared (send completes, or session switch), shrink it.
+    resizeTaskTextarea(taskTextareaRef.current);
+  }, [task]);
 
   useEffect(() => {
     api
@@ -678,9 +702,14 @@ export default function App() {
         <div className="composer">
           <textarea
             className="input"
+            ref={taskTextareaRef}
             value={task}
             disabled={!activeSessionId || sending}
-            onChange={(e) => setTask(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setTask(next);
+              resizeTaskTextarea(e.target);
+            }}
             placeholder={
               activeSessionId ? "Enter a task" : "Create a session to begin"
             }

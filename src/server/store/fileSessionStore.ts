@@ -51,6 +51,7 @@ function isoNow() {
 
 export class FileSessionStore {
   readonly directory: string;
+  private hasRecoveredInterrupted = false;
 
   constructor(opts: FileSessionStoreOptions) {
     this.directory = opts.directory;
@@ -58,6 +59,48 @@ export class FileSessionStore {
 
   async init() {
     await fs.mkdir(this.directory, { recursive: true });
+
+    // On process restart, convert any previously in-progress sessions into
+    // interrupted sessions so the UI can reflect the interrupted state.
+    //
+    // This runs only once per FileSessionStore instance to avoid flipping
+    // sessions that are legitimately in-progress while the current server is
+    // running.
+    if (this.hasRecoveredInterrupted) return;
+    this.hasRecoveredInterrupted = true;
+
+    await this.recoverInterruptedSessions();
+  }
+
+  private async recoverInterruptedSessions() {
+    try {
+      const entries = await fs.readdir(this.directory, {
+        withFileTypes: true,
+      });
+
+      for (const e of entries) {
+        if (!e.isFile() || !e.name.endsWith(".json")) continue;
+        const id = e.name.slice(0, -5);
+
+        let file: PersistedSessionFileV1;
+        try {
+          file = await this.readFile(id);
+        } catch {
+          continue;
+        }
+
+        if (!file.metadata.inProgress) continue;
+
+        file.metadata.inProgress = false;
+        file.metadata.agentRunId = undefined;
+        file.metadata.status = "interrupted";
+        file.metadata.lastActiveAt = isoNow();
+
+        await this.writeFileAtomic(this.getFilePath(id), file);
+      }
+    } catch {
+      return;
+    }
   }
 
   private getFilePath(id: string) {

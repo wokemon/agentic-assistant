@@ -648,16 +648,14 @@ export default function App() {
                         args:
                       </div>
                       <details open={c.status !== "pending"}>
-                        <summary className="muted">
-                          {c.status === "pending" ? "View" : "Args"}
-                        </summary>
+                        <summary className="muted"></summary>
                         <pre style={{ whiteSpace: "pre-wrap" }}>
                           {JSON.stringify(c.args, null, 2)}
                         </pre>
                       </details>
 
                       {c.status === "pending" ? null : (
-                        <details style={{ marginTop: 10 }} open>
+                        <details style={{ marginTop: 10 }}>
                           <summary className="muted">Result</summary>
                           <pre style={{ whiteSpace: "pre-wrap" }}>
                             {JSON.stringify(c.result?.result, null, 2)}

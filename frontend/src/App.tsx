@@ -676,7 +676,7 @@ export default function App() {
         </section>
 
         <div className="composer">
-          <input
+          <textarea
             className="input"
             value={task}
             disabled={!activeSessionId || sending}
@@ -685,9 +685,11 @@ export default function App() {
               activeSessionId ? "Enter a task" : "Create a session to begin"
             }
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                void sendTask();
-              }
+              if (e.key !== "Enter") return;
+              if (e.shiftKey) return; // allow default newline behavior
+
+              e.preventDefault();
+              void sendTask();
             }}
           />
           <button

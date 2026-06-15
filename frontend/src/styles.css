@@ -1,6 +1,14 @@
 :root {
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
-    Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Helvetica,
+    Arial,
+    "Apple Color Emoji",
+    "Segoe UI Emoji";
   color: #0f172a;
   background: #f8fafc;
 }
@@ -254,7 +262,7 @@ body {
 }
 
 .diagnosticsPanel {
-  margin: 0 16px 12px;
+  margin: 10px 16px 12px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   background: #ffffff;

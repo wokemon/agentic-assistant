@@ -30,22 +30,19 @@ A TypeScript-based AI coding agent that autonomously investigates, modifies, and
 
 Current MVP supports:
 
-- Autonomous tool usage
-- Multi-step reasoning
+- Autonomous tool usage and multi-step reasoning
 - Repository investigation workflows
-- Safe file modification
-- Structured agent execution
+- Safe file modification via validated write tools
+- Safety guards and structured diagnostics/observability
+- Git tools: `git_status`, `git_diff`
+- Test/build execution: `run_tests`, `build_project`
+- SSE streaming via `/api/sessions/*` plus session persistence
 
 Planned next capabilities:
 
-- Git integration
-  - git status
-  - git diff
-
-- Test execution
-- Build execution
 - Context summarization
-- Web UI
+- Auth/multi-user support
+- Web UI polish (beyond the current Phase 4 scope)
 
 ---
 
@@ -138,7 +135,7 @@ The response will be a stream of `AgentEvent` JSON objects (SSE `data:` frames) 
 
 ---
 
-## Web UI (Phase 3)
+## Web UI (Phase 4)
 
 Run backend + frontend together:
 

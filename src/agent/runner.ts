@@ -19,7 +19,7 @@ import type { LoopGuard } from "../safety/loopGuards";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MAX_ITERATIONS = 10;
+const MAX_ITERATIONS = 15;
 
 // ─── Session Types ───────────────────────────────────────────────────────────
 
@@ -32,8 +32,9 @@ export type SessionState = {
   diagnostics: AgentDiagnostics;
 };
 
-function isWorkingMemory(session: WorkingMemory | SessionState):
-  session is WorkingMemory {
+function isWorkingMemory(
+  session: WorkingMemory | SessionState,
+): session is WorkingMemory {
   const anySession = session as any;
   return (
     anySession instanceof WorkingMemoryClass ||
@@ -74,7 +75,9 @@ export async function runAgentTask(
 
   function abortReason(): AgentResult["status"] {
     const reason = opts?.signal?.reason;
-    return typeof reason === "string" ? (reason as AgentResult["status"]) : "user_cancelled";
+    return typeof reason === "string"
+      ? (reason as AgentResult["status"])
+      : "user_cancelled";
   }
 
   function abortResult(): AgentResult {
@@ -110,7 +113,10 @@ export async function runAgentTask(
       rawResponse = await generateResponse(context, opts?.signal);
     } catch (error) {
       if (opts?.signal?.aborted) {
-        agentLogger.warn({ reason: opts.signal.reason }, "Agent aborted during LLM request");
+        agentLogger.warn(
+          { reason: opts.signal.reason },
+          "Agent aborted during LLM request",
+        );
         return abortResult();
       }
 
@@ -146,11 +152,7 @@ export async function runAgentTask(
     if (!parsed.success) {
       agentLogger.warn({ error: parsed.error }, "Malformed response");
 
-      const outcome = processMalformedResponse(
-        parsed.error,
-        task,
-        runtime,
-      );
+      const outcome = processMalformedResponse(parsed.error, task, runtime);
 
       if (outcome.kind === "abort") {
         onEvent({

@@ -82,6 +82,17 @@ export class WorkingMemory {
     return wm;
   }
 
+  // Returns only facts for cross-session persistence (excludes openedFiles/summaries)
+  toPersistedState() {
+    return { facts: Array.from(this.facts) };
+  }
+
+  static fromPersistedState(state: { facts: string[] }) {
+    const wm = new WorkingMemory();
+    wm.facts = new Set(state.facts);
+    return wm;
+  }
+
   // Reset memory state completely
   clear() {
     this.facts.clear();

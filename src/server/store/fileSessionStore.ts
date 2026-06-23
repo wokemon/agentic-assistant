@@ -43,6 +43,7 @@ type PersistedSessionFileV1 = {
     state: AgentState;
     diagnostics: AgentDiagnostics;
   };
+  persistedMemory?: { facts: string[] };
 };
 
 function isoNow() {
@@ -358,5 +359,22 @@ export class FileSessionStore {
     file.metadata.lastActiveAt = isoNow();
 
     await this.writeFileAtomic(this.getFilePath(opts.id), file);
+  }
+
+  async saveMemory(sessionId: string, persistedState: { facts: string[] }) {
+    await this.init();
+    const file = await this.readFile(sessionId);
+    file.persistedMemory = persistedState;
+    await this.writeFileAtomic(this.getFilePath(sessionId), file);
+  }
+
+  async loadMemory(sessionId: string): Promise<{ facts: string[] } | null> {
+    await this.init();
+    try {
+      const file = await this.readFile(sessionId);
+      return file.persistedMemory ?? null;
+    } catch {
+      return null;
+    }
   }
 }

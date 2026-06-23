@@ -53,7 +53,10 @@ export async function runAgentTask(
   task: string,
   session: WorkingMemory | SessionState,
   onEvent: (event: AgentEvent) => void,
-  opts?: { signal?: AbortSignal },
+  opts?: {
+    signal?: AbortSignal;
+    saveMemory?: (sessionId: string, memory: { facts: string[] }) => Promise<void>;
+  },
 ): Promise<AgentResult> {
   const runtime = isWorkingMemory(session)
     ? new AgentRuntime({ memory: session })
@@ -80,9 +83,10 @@ export async function runAgentTask(
       : "user_cancelled";
   }
 
-  function abortResult(): AgentResult {
+  async function abortResult(): Promise<AgentResult> {
     const status = abortReason();
     onEvent({ type: "safety_stop", reason: status });
+    await opts?.saveMemory?.(runtime.sessionId, runtime.memory.toPersistedState());
     return { status, diagnostics: runtime.diagnostics };
   }
 
@@ -129,6 +133,7 @@ export async function runAgentTask(
           type: "safety_stop",
           reason: safetyReason("context_budget_exceeded"),
         });
+        await opts?.saveMemory?.(runtime.sessionId, runtime.memory.toPersistedState());
         return {
           status: "context_budget_exceeded",
           diagnostics: runtime.diagnostics,
@@ -160,6 +165,7 @@ export async function runAgentTask(
           reason: safetyReason(outcome.result.status),
         });
         agentLogger.error("Agent stopped due to repeated malformed responses.");
+        await opts?.saveMemory?.(runtime.sessionId, runtime.memory.toPersistedState());
         return outcome.result;
       }
 
@@ -201,6 +207,7 @@ export async function runAgentTask(
 
       onEvent({ type: "final_answer", text: response.finalAnswer });
 
+      await opts?.saveMemory?.(runtime.sessionId, runtime.memory.toPersistedState());
       return {
         status: "completed",
         finalAnswer: response.finalAnswer,
@@ -233,6 +240,7 @@ export async function runAgentTask(
           { toolFailures: runtime.diagnostics.toolFailures },
           "Agent stopped: too many tool failures",
         );
+        await opts?.saveMemory?.(runtime.sessionId, runtime.memory.toPersistedState());
         return outcome.result;
       }
 
@@ -267,5 +275,6 @@ export async function runAgentTask(
 
   onEvent({ type: "safety_stop", reason: safetyReason(result.status) });
 
+  await opts?.saveMemory?.(runtime.sessionId, runtime.memory.toPersistedState());
   return result;
 }

@@ -246,7 +246,7 @@ describe("runAgent", () => {
 
   // ── Max iterations ────────────────────────────────────────────────────────────
 
-  it("stops and returns max_iterations after 10 loops", async () => {
+  it("stops and returns max_iterations after 15 loops", async () => {
     // Always return a tool call that succeeds so it never resolves
     vi.mocked(generateResponse).mockResolvedValue(
       '{"toolCall":{"tool":"find_files","args":{}}}',
@@ -260,7 +260,7 @@ describe("runAgent", () => {
     const result = await runAgent("test");
 
     expect(result.status).toBe("max_iterations");
-    expect(generateResponse).toHaveBeenCalledTimes(10);
+    expect(generateResponse).toHaveBeenCalledTimes(15);
   });
 
   // ── Diagnostics ───────────────────────────────────────────────────────────────

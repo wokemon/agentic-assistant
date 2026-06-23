@@ -3,12 +3,16 @@ import crypto from "crypto";
 import type { AgentEvent, AgentResult } from "../../shared/types";
 import type { SessionState } from "../../agent/runner";
 import type { FileSessionStore } from "../store/fileSessionStore";
+import { WorkingMemory } from "../../context/workingMemory";
 
 type AgentTaskFn = (
   task: string,
   session: SessionState,
   onEvent: (event: AgentEvent) => void,
-  opts?: { signal?: AbortSignal },
+  opts?: {
+    signal?: AbortSignal;
+    saveMemory?: (sessionId: string, memory: { facts: string[] }) => Promise<void>;
+  },
 ) => Promise<AgentResult>;
 
 type ActiveRun = {
@@ -60,6 +64,15 @@ export function registerSessionsRoutes(
     }
 
     const session = sessionRecord.session;
+
+    // Hydrate cross-session memory (facts only) if previously persisted.
+    const persistedMemory = await sessionStore.loadMemory(id);
+    if (persistedMemory) {
+      const hydrated = WorkingMemory.fromPersistedState(persistedMemory);
+      for (const fact of hydrated.getState().facts) {
+        session.memory.addFact(fact);
+      }
+    }
 
     // Mark this session as running so a restart can flag it as interrupted.
     const runId = crypto.randomUUID();
@@ -127,6 +140,7 @@ export function registerSessionsRoutes(
 
       agentResult = await agentTask(task, session, onEvent, {
         signal: controller.signal,
+        saveMemory: sessionStore.saveMemory.bind(sessionStore),
       });
     } catch {
       // `onEvent` should already have emitted an `error` event from the runner.

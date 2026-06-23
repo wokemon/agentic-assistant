@@ -10,7 +10,10 @@ export type AgentTaskFn = (
   task: string,
   session: SessionState,
   onEvent: (event: AgentEvent) => void,
-  opts?: { signal?: AbortSignal },
+  opts?: {
+    signal?: AbortSignal;
+    saveMemory?: (sessionId: string, memory: { facts: string[] }) => Promise<void>;
+  },
 ) => Promise<AgentResult>;
 
 function getMockRunAgentTask(): AgentTaskFn {
@@ -68,9 +71,9 @@ export function buildServer(opts?: { agentTask?: AgentTaskFn; sessionStoreDir?: 
   const agentTask: AgentTaskFn = useMock
     ? getMockRunAgentTask()
     : (opts?.agentTask ??
-      (async (task, session, onEvent) => {
+      (async (task, session, onEvent, callOpts) => {
         const mod = await import("../agent/runner.js");
-        return mod.runAgentTask(task, session, onEvent);
+        return mod.runAgentTask(task, session, onEvent, callOpts);
       }));
 
   registerSessionsRoutes(fastify, {

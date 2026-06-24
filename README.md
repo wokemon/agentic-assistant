@@ -37,6 +37,7 @@ Current MVP supports:
 - Git tools: `git_status`, `git_diff`
 - Test/build execution: `run_tests`, `build_project`
 - SSE streaming via `/api/sessions/*` plus session persistence
+- Production static file serving — single `pnpm build && pnpm start` command
 
 Planned next capabilities:
 
@@ -107,7 +108,7 @@ Investigate why the build is failing
 
 ## Running the Server (SSE)
 
-Start the HTTP API server:
+### Development
 
 ```bash
 pnpm dev:server
@@ -133,11 +134,24 @@ curl -N \
 
 The response will be a stream of `AgentEvent` JSON objects (SSE `data:` frames) and a final `event: done` frame.
 
+### Production
+
+Build everything then start the single-process server (no separate Vite needed):
+
+```bash
+pnpm build && pnpm start
+```
+
+The production server serves the compiled frontend (`frontend/dist/`) directly via Fastify.
+`/api/*` routes take priority; all other GET requests serve the SPA `index.html` for React Router client-side routing.
+
 ---
 
 ## Web UI (Phase 4)
 
-Run backend + frontend together:
+### Development
+
+Run backend + frontend together with Vite's dev proxy:
 
 ```bash
 pnpm dev:web
@@ -152,9 +166,19 @@ Tip: for local SSE smoke-testing without an OpenAI key, run:
 AGENT_MOCK=1 pnpm dev:web
 ```
 
+### Production
+
+```bash
+pnpm build && pnpm start
+```
+
+The app runs as a single process on `http://localhost:3001` — no Vite dev server required.
+
 ---
 
 ## Building
+
+Build both backend and frontend:
 
 ```bash
 pnpm build
@@ -163,7 +187,8 @@ pnpm build
 Output:
 
 ```text
-dist/
+dist/              # compiled backend
+frontend/dist/     # compiled frontend (Vite)
 ```
 
 ---

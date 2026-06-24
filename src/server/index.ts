@@ -1,10 +1,12 @@
 import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import fastifyStatic from "@fastify/static";
 import { registerSessionsRoutes } from "./routes/sessions";
 import type { AgentEvent, AgentResult } from "../shared/types";
 import type { SessionState } from "../agent/runner";
 import { createSessionStore, type FileSessionStore } from "./store";
+import path from "node:path";
 
 export type AgentTaskFn = (
   task: string,
@@ -79,6 +81,20 @@ export function buildServer(opts?: { agentTask?: AgentTaskFn; sessionStoreDir?: 
   registerSessionsRoutes(fastify, {
     sessionStore,
     agentTask,
+  });
+
+  const frontendDist = path.resolve(process.cwd(), "frontend/dist");
+  fastify.register(fastifyStatic, {
+    root: frontendDist,
+    wildcard: true,
+    index: ["index.html"],
+  });
+
+  fastify.setNotFoundHandler(async (request, reply) => {
+    if (request.method !== "GET") {
+      return reply.code(404).send({ error: "Not found" });
+    }
+    return reply.sendFile("index.html");
   });
 
   return fastify;

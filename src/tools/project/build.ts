@@ -6,6 +6,8 @@ import type { ToolDefinition } from "../../shared/types";
 
 const execPromise = promisify(exec);
 
+const MAX_BUFFER_BYTES = 50 * 1024 * 1024;
+
 export const buildProjectSchema = z.object({}); // No arguments needed for a standard build
 
 type BuildProjectArgs = z.infer<typeof buildProjectSchema>;
@@ -23,7 +25,9 @@ export const buildProjectTool: ToolDefinition<BuildProjectArgs> = {
 
       logger.info({ cmd }, "Executing build process");
 
-      const { stdout, stderr } = await execPromise(cmd);
+      const { stdout, stderr } = await execPromise(cmd, {
+        maxBuffer: MAX_BUFFER_BYTES,
+      });
 
       return {
         success: true,

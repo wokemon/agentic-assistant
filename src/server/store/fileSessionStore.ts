@@ -31,6 +31,7 @@ type PersistedSessionFileV1 = {
     inProgress: boolean;
     agentRunId?: string;
     status: "active" | "completed" | "interrupted";
+    interruptedReason?: string;
   };
   conversation: {
     userTasks: string[];
@@ -95,6 +96,7 @@ export class FileSessionStore {
         file.metadata.inProgress = false;
         file.metadata.agentRunId = undefined;
         file.metadata.status = "interrupted";
+        file.metadata.interruptedReason = "interrupted";
         file.metadata.lastActiveAt = isoNow();
 
         await this.writeFileAtomic(this.getFilePath(id), file);
@@ -166,6 +168,7 @@ export class FileSessionStore {
         lastActiveAt: now,
         inProgress: false,
         status: "active",
+        interruptedReason: undefined,
       },
       conversation: {
         userTasks: [],
@@ -222,6 +225,7 @@ export class FileSessionStore {
     userTasks: string[];
     events: AgentEvent[];
     diagnostics: AgentDiagnostics;
+    interruptedReason?: string;
   }> {
     await this.init();
     try {
@@ -236,6 +240,7 @@ export class FileSessionStore {
         userTasks: file.conversation.userTasks,
         events: file.conversation.events,
         diagnostics: file.session.diagnostics,
+        interruptedReason: file.metadata.interruptedReason,
       };
     } catch (err) {
       // Normalize missing session into a consistent error.
@@ -289,6 +294,7 @@ export class FileSessionStore {
     file.metadata.inProgress = true;
     file.metadata.agentRunId = agentRunId;
     file.metadata.status = "active";
+    file.metadata.interruptedReason = undefined;
     file.metadata.lastActiveAt = isoNow();
 
     if (!file.metadata.title && title) {
@@ -325,6 +331,7 @@ export class FileSessionStore {
     file.metadata.inProgress = false;
     file.metadata.agentRunId = undefined;
     file.metadata.status = "completed";
+    file.metadata.interruptedReason = undefined;
     file.metadata.lastActiveAt = isoNow();
 
     await this.writeFileAtomic(this.getFilePath(opts.id), file);
@@ -336,6 +343,7 @@ export class FileSessionStore {
     session: SessionState;
     userTask: string;
     events: AgentEvent[];
+    reason?: string;
   }) {
     await this.init();
     const file = await this.readFile(opts.id);
@@ -356,6 +364,7 @@ export class FileSessionStore {
     file.metadata.inProgress = false;
     file.metadata.agentRunId = undefined;
     file.metadata.status = "interrupted";
+    file.metadata.interruptedReason = opts.reason;
     file.metadata.lastActiveAt = isoNow();
 
     await this.writeFileAtomic(this.getFilePath(opts.id), file);

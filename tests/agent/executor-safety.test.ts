@@ -69,7 +69,9 @@ describe("executeToolCall Safety Integration", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("CommandBlocked");
+    expect(result.error).toContain(
+      "Command not permitted: only build, test, and git commands are allowed",
+    );
   });
 
   it("should block sudo commands", async () => {
@@ -78,12 +80,14 @@ describe("executeToolCall Safety Integration", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("sudo");
+    expect(result.error).toContain(
+      "Command not permitted: only build, test, and git commands are allowed",
+    );
   });
 
   it("should allow safe shell commands", async () => {
     const result = await executeToolCall("terminal_execute", {
-      command: "ls -la",
+      command: "git status",
     });
 
     expect(result.success).toBe(true);
@@ -141,6 +145,8 @@ describe("executeToolCall Safety Integration", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("CommandBlocked");
+    expect(result.error).toContain(
+      "Command not permitted: only build, test, and git commands are allowed",
+    );
   });
 });

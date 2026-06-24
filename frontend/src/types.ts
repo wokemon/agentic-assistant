@@ -34,6 +34,7 @@ export type SessionListItem = {
 export type SessionDetailsResponse = {
   sessionId: string;
   status: AgentStatus | string;
+  interruptedReason?: string;
   title?: string;
   lastActiveAt: string;
   createdAt: string;

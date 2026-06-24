@@ -156,22 +156,51 @@ export function registerSessionsRoutes(
       // Emit the final SSE frame before persisting the session.
       finishStream();
 
+       const runnerStatus = agentResult?.status;
+       const interruptedStatuses = new Set<AgentResult["status"]>([
+         "max_iterations",
+         "context_budget_exceeded",
+         "parse_failure",
+         "malformed_response",
+         "too_many_tool_failures",
+       ]);
+
       // Persist the in-memory mutations from this run.
-      if (controller.signal.aborted) {
-        await sessionStore.markInterrupted({
-          id,
-          title: normalizedTaskTitle,
-          session,
-          userTask: task,
-          events: runEvents,
-        });
-      } else {
+      if (runnerStatus === "completed") {
         await sessionStore.markCompleted({
           id,
           title: normalizedTaskTitle,
           session,
           userTask: task,
           events: runEvents,
+        });
+      } else if (controller.signal.aborted) {
+        await sessionStore.markInterrupted({
+          id,
+          title: normalizedTaskTitle,
+          session,
+          userTask: task,
+          events: runEvents,
+          reason: runnerStatus,
+        });
+      } else if (runnerStatus && interruptedStatuses.has(runnerStatus)) {
+        await sessionStore.markInterrupted({
+          id,
+          title: normalizedTaskTitle,
+          session,
+          userTask: task,
+          events: runEvents,
+          reason: runnerStatus,
+        });
+      } else {
+        // Unknown stop reason: treat as interrupted so the user sees a non-success outcome.
+        await sessionStore.markInterrupted({
+          id,
+          title: normalizedTaskTitle,
+          session,
+          userTask: task,
+          events: runEvents,
+          reason: runnerStatus ?? "unknown",
         });
       }
 
@@ -197,6 +226,7 @@ export function registerSessionsRoutes(
         userTasks: record.userTasks,
         events: record.events,
         diagnostics: record.session.diagnostics,
+        interruptedReason: record.interruptedReason,
       };
     } catch {
       return { error: "Unknown session", status: "unknown" };

@@ -4,6 +4,7 @@ import {
   ContextBudgetExceededError,
 } from "../../src/context/contextBuilder";
 import { Message } from "../../src/shared/types";
+import { MAX_CONTEXT_TOKENS } from "../../src/shared/config";
 
 // 1. Mock the System Prompt to guarantee determinism
 vi.mock("../../src/agent/prompt", () => ({
@@ -76,11 +77,11 @@ describe("ContextBuilder Validation Suite", () => {
   it("should aggressively prune the oldest history messages when token budget is tight", () => {
     const memory = createMockMemory();
 
-    // Simulate a maxed-out budget based on the new 40k limit (40,000 tokens = ~160,000 characters)
-    const massiveOldString = "A".repeat(150000); // ~37,500 tokens
-    const recentString = "B".repeat(20000); // ~5,000 tokens
-
-    // Base context takes some tokens, so 37.5k + 5k = ~42.5k (which safely exceeds the 40k limit)
+    // We want only the newest history message to fit.
+    // Use a very large "old" message so it cannot fit even after accounting for base context.
+    const massiveOldString = "A".repeat((MAX_CONTEXT_TOKENS + 1000) * 4);
+    // Keep the "recent" message small enough to always fit.
+    const recentString = "B".repeat(20000); // ~5,000 tokens with the 4 chars/token heuristic
     const history = createMockHistory([
       { role: "assistant", content: massiveOldString }, // Oldest: Should be dropped
       { role: "user", content: recentString }, // Newest: Should be kept
@@ -97,8 +98,8 @@ describe("ContextBuilder Validation Suite", () => {
   it("should throw ContextBudgetExceededError if base context alone breaches the safety limit", () => {
     const memory = createMockMemory();
 
-    // Create an impossibly massive current task string to trigger the circuit breaker (Exceeds 40k limit)
-    const massiveTask = "C".repeat(200000); // ~50,000 tokens
+    // Create an impossibly massive current task string to trigger the circuit breaker.
+    const massiveTask = "C".repeat(MAX_CONTEXT_TOKENS * 4 * 2);
     const history = createMockHistory();
 
     // The builder must fail deterministically rather than crashing the API

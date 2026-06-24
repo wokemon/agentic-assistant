@@ -2,11 +2,10 @@ import { Message } from "../shared/types";
 import { WorkingMemory } from "./workingMemory";
 import { MessageHistory } from "../agent/history";
 import { SYSTEM_PROMPT } from "../agent/prompt";
+import { MAX_CONTEXT_TOKENS } from "../shared/config";
 
 // Fast zero-dependency heuristic: 1 token ≈ 4 characters
 const CHARS_PER_TOKEN = 4;
-// Dialed back to a safer margin to leave room for the model response and hidden overhead
-const MAX_CONTEXT_TOKENS = 40000;
 
 export class ContextBudgetExceededError extends Error {
   constructor(message: string) {

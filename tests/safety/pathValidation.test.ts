@@ -39,6 +39,26 @@ describe("PathValidation", () => {
     expect(result.allowed).toBe(false);
   });
 
+  it("should allow absolute paths inside workspace", () => {
+    const abs = path.join(workspaceRoot, "src/index.ts");
+    const result = PathValidation.validate(abs, workspaceRoot);
+
+    expect(result.allowed).toBe(true);
+    expect(result.resolvedPath).toBe(path.join(workspaceRoot, "src/index.ts"));
+  });
+
+  it("should allow valid nested paths", () => {
+    const result = PathValidation.validate(
+      "src/context/contextBuilder.ts",
+      workspaceRoot,
+    );
+
+    expect(result.allowed).toBe(true);
+    expect(result.resolvedPath).toBe(
+      path.join(workspaceRoot, "src/context/contextBuilder.ts"),
+    );
+  });
+
   it("should reject empty paths", () => {
     const result1 = PathValidation.validate("", workspaceRoot);
     const result2 = PathValidation.validate("   ", workspaceRoot);

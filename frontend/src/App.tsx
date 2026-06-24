@@ -55,7 +55,9 @@ function formatTime(iso: string) {
 }
 
 function statusBannerText(status: string, lastReason?: string) {
-  if (status === "interrupted") return "Agent stopped: interrupted";
+  if (status === "interrupted") {
+    return lastReason ? `Agent stopped: ${lastReason}` : "Agent stopped: interrupted";
+  }
   if (lastReason) return `Agent stopped: ${lastReason}`;
   return "";
 }
@@ -296,7 +298,7 @@ export default function App() {
         setTimeline(buildTimelineFromEvents(d.events ?? []));
         setShowDiagnostics(true);
         if (d.status === "interrupted") {
-          setBanner(statusBannerText(d.status));
+          setBanner(statusBannerText(d.status, d.interruptedReason));
         } else {
           setBanner(null);
         }
@@ -536,13 +538,17 @@ export default function App() {
           }}
         >
           <div>
-            <div style={{ fontWeight: 900 }}>
-              {activeSession?.title ?? "Untitled"}
-            </div>
-            <div className="muted">
-              {details ? `Status: ${details.status}` : ""}
-            </div>
+          <div style={{ fontWeight: 900 }}>
+            {activeSession?.title ?? "Untitled"}
           </div>
+          <div className="muted">
+            {details
+              ? details.status === "interrupted" && details.interruptedReason
+                ? `Status: interrupted (${details.interruptedReason})`
+                : `Status: ${details.status}`
+              : ""}
+          </div>
+        </div>
           <div className="row">
             {details?.status === "interrupted" && !sending ? (
               <button

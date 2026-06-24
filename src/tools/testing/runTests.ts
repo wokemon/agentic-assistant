@@ -6,6 +6,8 @@ import type { ToolDefinition } from "../../shared/types";
 
 const execPromise = promisify(exec);
 
+const MAX_BUFFER_BYTES = 50 * 1024 * 1024;
+
 export const runTestsSchema = z.object({
   target: z
     .enum(["all", "unit", "integration"])
@@ -40,7 +42,9 @@ export const runTestsTool: ToolDefinition<RunTestsArgs> = {
 
       logger.info({ cmd }, "Executing test suite");
 
-      const { stdout, stderr } = await execPromise(cmd);
+      const { stdout, stderr } = await execPromise(cmd, {
+        maxBuffer: MAX_BUFFER_BYTES,
+      });
 
       return {
         success: true,

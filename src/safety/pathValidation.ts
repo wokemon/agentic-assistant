@@ -17,11 +17,20 @@ export class PathValidation {
     }
 
     try {
-      const resolvedPath = path.resolve(workspaceRoot, inputPath);
+      const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+      const resolvedPath = path.resolve(resolvedWorkspaceRoot, inputPath);
+      const relative = path.relative(resolvedWorkspaceRoot, resolvedPath);
 
-      // Ensure it stays within workspace root using path.relative
-      const relative = path.relative(workspaceRoot, resolvedPath);
-      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      // Reject absolute input paths that escape the workspace.
+      if (path.isAbsolute(inputPath) && !resolvedPath.startsWith(resolvedWorkspaceRoot)) {
+        return {
+          allowed: false,
+          reason: `Path traversal detected: ${inputPath} resolves outside workspace`,
+        };
+      }
+
+      // Traversal check: resolvedPath must remain within workspace.
+      if (!resolvedPath.startsWith(resolvedWorkspaceRoot) || relative.startsWith("..")) {
         return {
           allowed: false,
           reason: `Path traversal detected: ${inputPath} resolves outside workspace`,

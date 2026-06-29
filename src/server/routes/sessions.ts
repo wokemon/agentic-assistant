@@ -43,8 +43,21 @@ export function registerSessionsRoutes(
   app: FastifyInstance,
   { sessionStore, agentTask }: SessionsStore,
 ) {
-  app.post("/api/sessions", async () => {
-    const { sessionId } = await sessionStore.createSession();
+  app.post<{ Body: { sessionId?: string } }>("/api/sessions", async (request) => {
+    const requestedSessionId = request.body?.sessionId;
+
+    if (requestedSessionId) {
+      try {
+        await sessionStore.getSession(requestedSessionId);
+        return { sessionId: requestedSessionId };
+      } catch {
+        // Create a new session with the provided ID.
+      }
+    }
+
+    const { sessionId } = await sessionStore.createSession({
+      sessionId: requestedSessionId,
+    });
     return { sessionId };
   });
 

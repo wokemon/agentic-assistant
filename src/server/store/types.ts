@@ -6,6 +6,10 @@ import type { WorkingMemory } from "../../context/workingMemory";
 
 export type AgentStatus = "active" | "completed" | "interrupted";
 
+export type CreateSessionOptions = {
+  sessionId?: string;
+};
+
 export type WorkingMemoryState = ReturnType<WorkingMemory["getState"]>;
 
 export type MessageHistoryState = {

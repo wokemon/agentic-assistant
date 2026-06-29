@@ -32,12 +32,20 @@ type TimelineItem = TimelineToolItem | TimelineBannerItem;
 
 const api = {
   listSessions: async (): Promise<SessionListItem[]> => {
-    const res = await fetch("/api/sessions");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  },
-  createSession: async (): Promise<{ sessionId: string }> => {
-    const res = await fetch("/api/sessions", { method: "POST" });
+      const res = await fetch("/api/sessions");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+  createSession: async (
+    sessionId?: string,
+  ): Promise<{ sessionId: string }> => {
+    const init: RequestInit = { method: "POST" };
+    if (sessionId) {
+      init.headers = { "Content-Type": "application/json" };
+      init.body = JSON.stringify({ sessionId });
+    }
+
+    const res = await fetch("/api/sessions", init);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
@@ -273,17 +281,53 @@ export default function App() {
   }, [task]);
 
   useEffect(() => {
-    api
-      .listSessions()
-      .then((list) => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      try {
+        let storedSessionId: string | null = null;
+        try {
+          storedSessionId = localStorage.getItem("sessionId");
+        } catch {
+          storedSessionId = null;
+        }
+
+        const created = storedSessionId
+          ? await api.createSession(storedSessionId)
+          : await api.createSession();
+
+        if (!storedSessionId) {
+          try {
+            localStorage.setItem("sessionId", created.sessionId);
+          } catch {
+            // ignore
+          }
+        }
+
+        const list = await api.listSessions();
+        if (cancelled) return;
+
         setSessions(list);
-        if (list.length > 0) setActiveSessionId(list[0].id);
-      })
-      .catch((err) => {
+        const selected =
+          list.find((s) => s.id === created.sessionId)?.id ??
+          list[0]?.id ??
+          null;
+        setActiveSessionId(selected);
+      } catch (err) {
+        if (cancelled) return;
         setBanner(
-          `Failed to load sessions: ${err instanceof Error ? err.message : String(err)}`,
+          `Failed to load sessions: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
         );
-      });
+      }
+    }
+
+    void bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

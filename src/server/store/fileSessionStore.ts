@@ -9,6 +9,7 @@ import { LoopGuard } from "../../safety/loopGuards";
 import { MessageHistory } from "../../agent/history";
 import { WorkingMemory } from "../../context/workingMemory";
 import type { AgentStatus } from "./types";
+import type { CreateSessionOptions } from "./types";
 import type {
   LoopGuardState,
   MessageHistoryState,
@@ -129,13 +130,15 @@ export class FileSessionStore {
     await fs.rename(tmpPath, filePath);
   }
 
-  async createSession(): Promise<{
+  async createSession(
+    options?: CreateSessionOptions,
+  ): Promise<{
     sessionId: string;
     session: SessionState;
   }> {
     await this.init();
 
-    const sessionId = crypto.randomUUID();
+    const sessionId = options?.sessionId ?? crypto.randomUUID();
     const now = isoNow();
 
     // The agent runner expects these fields on non-WorkingMemory session.

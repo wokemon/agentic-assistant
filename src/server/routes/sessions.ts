@@ -153,17 +153,14 @@ export function registerSessionsRoutes(
         session.diagnostics = agentResult.diagnostics;
       }
 
-      // Emit the final SSE frame before persisting the session.
-      finishStream();
-
-       const runnerStatus = agentResult?.status;
-       const interruptedStatuses = new Set<AgentResult["status"]>([
-         "max_iterations",
-         "context_budget_exceeded",
-         "parse_failure",
-         "malformed_response",
-         "too_many_tool_failures",
-       ]);
+      const runnerStatus = agentResult?.status;
+      const interruptedStatuses = new Set<AgentResult["status"]>([
+        "max_iterations",
+        "context_budget_exceeded",
+        "parse_failure",
+        "malformed_response",
+        "too_many_tool_failures",
+      ]);
 
       // Persist the in-memory mutations from this run.
       if (runnerStatus === "completed") {
@@ -203,6 +200,9 @@ export function registerSessionsRoutes(
           reason: runnerStatus ?? "unknown",
         });
       }
+
+      // Emit the final SSE frame only after persisting the session.
+      finishStream();
 
       endStream();
     }

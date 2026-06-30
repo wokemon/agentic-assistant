@@ -38,6 +38,8 @@ Current MVP supports:
 - Test/build execution: `run_tests`, `build_project`
 - SSE streaming via `/api/sessions/*` plus session persistence
 - Production static file serving — single `pnpm build && pnpm start` command
+- Stable session IDs — caller can supply a session ID on creation; existing sessions are reused
+- Cross-session memory persistence across server restarts
 
 Planned next capabilities:
 
@@ -124,8 +126,21 @@ Default port is `3001` (override with `PORT`).
 
 SSE example:
 
+Create a new session (server generates the ID):
+
 ```bash
 sessionId=$(curl -s -X POST http://localhost:3001/api/sessions | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).sessionId")
+```
+
+Or reuse an existing session by supplying a stable session ID:
+
+```bash
+sessionId=$(curl -s -X POST http://localhost:3001/api/sessions -H "Content-Type: application/json" -d '{"sessionId":"my-stable-id"}' | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).sessionId")
+```
+
+Send a task:
+
+```bash
 curl -N \
   -H "Content-Type: application/json" \
   -X POST "http://localhost:3001/api/sessions/${sessionId}/messages" \
@@ -560,6 +575,7 @@ This improves debugging, testing, and future observability.
 - Web UI
 - Streaming updates
 - Session persistence
+- Stable session IDs — frontend persists the session ID in `localStorage` for reuse across page loads; server supports caller-supplied IDs
 
 ---
 

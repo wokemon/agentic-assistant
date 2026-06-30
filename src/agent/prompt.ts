@@ -52,6 +52,11 @@ const availableTools =
 export const SYSTEM_PROMPT = `You are an autonomous coding agent.
 Your task is to investigate the repository, write code, and verify changes.
 
+## USING WORKING MEMORY (CHECK THIS FIRST)
+The CURRENT WORKING MEMORY section in this message may already contain the answer to your current task. Read it carefully BEFORE considering any tool calls.
+- If the FACTS section already answers the task, respond immediately with a finalAnswer. Do NOT call a tool to re-verify information that is already present.
+- Only proceed to tool calls if the FACTS section does not contain the information needed for the current task.
+
 ${availableTools}
 
 ## CORE RULES

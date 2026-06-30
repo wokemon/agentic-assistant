@@ -252,6 +252,7 @@ export default function App() {
   const lastTaskRef = useRef<string>("");
   const pendingReasoningRef = useRef<string[]>([]);
   const taskTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const bootstrapStarted = useRef(false);
 
   const MAX_TEXTAREA_HEIGHT_PX = 200;
 
@@ -284,6 +285,10 @@ export default function App() {
     let cancelled = false;
 
     async function bootstrap() {
+      // Guard against duplicate invocations (e.g. React.StrictMode in dev).
+      if (bootstrapStarted.current) return;
+      bootstrapStarted.current = true;
+
       try {
         let storedSessionId: string | null = null;
         try {
@@ -305,7 +310,6 @@ export default function App() {
         }
 
         const list = await api.listSessions();
-        if (cancelled) return;
 
         setSessions(list);
         const selected =
@@ -314,7 +318,6 @@ export default function App() {
           null;
         setActiveSessionId(selected);
       } catch (err) {
-        if (cancelled) return;
         setBanner(
           `Failed to load sessions: ${
             err instanceof Error ? err.message : String(err)

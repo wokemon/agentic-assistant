@@ -54,6 +54,12 @@ const api = {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
+  deleteSession: async (sessionId: string): Promise<void> => {
+    const res = await fetch(`/api/sessions/${sessionId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+  },
 };
 
 function formatTime(iso: string) {
@@ -394,6 +400,37 @@ export default function App() {
     }
   }
 
+  async function handleDeleteSession(sessionId: string) {
+    if (!window.confirm("Are you sure you want to delete this session?")) return;
+
+    try {
+      await api.deleteSession(sessionId);
+    } catch {
+      setBanner("Failed to delete session");
+      return;
+    }
+
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+
+    if (sessionId === activeSessionId) {
+      try {
+        localStorage.removeItem("sessionId");
+      } catch {
+        // ignore
+      }
+      setSessions((prev) => {
+        const remaining = prev.filter((s) => s.id !== sessionId);
+        setActiveSessionId(remaining[0]?.id ?? null);
+        if (remaining.length === 0) {
+          setDetails(null);
+          setChat([]);
+          setTimeline([]);
+        }
+        return remaining;
+      });
+    }
+  }
+
   function pushChat(role: ChatItem["role"], content: string) {
     setChat((prev) => [...prev, { id: crypto.randomUUID(), role, content }]);
   }
@@ -566,6 +603,16 @@ export default function App() {
               >
                 <div className="sessionTitle">{s.title ?? "Untitled"}</div>
                 <div className="sessionMeta">{formatTime(s.lastActiveAt)}</div>
+                <button
+                  className="sessionDeleteBtn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleDeleteSession(s.id);
+                  }}
+                  title="Delete session"
+                >
+                  ✕
+                </button>
               </div>
             ))}
             {empty ? <div className="muted">No sessions yet.</div> : null}

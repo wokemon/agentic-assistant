@@ -389,4 +389,13 @@ export class FileSessionStore {
       return null;
     }
   }
+
+  async deleteSession(id: string): Promise<void> {
+    await this.init();
+    try {
+      await fs.unlink(this.getFilePath(id));
+    } catch {
+      // Silently succeed if file doesn't exist
+    }
+  }
 }

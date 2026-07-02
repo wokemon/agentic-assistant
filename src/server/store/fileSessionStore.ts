@@ -400,8 +400,18 @@ export class FileSessionStore {
     await this.init();
     try {
       await fs.unlink(this.getFilePath(id));
-    } catch {
-      // Silently succeed if file doesn't exist
+    } catch (err: unknown) {
+      // Silently succeed if the file doesn't exist; otherwise surface the error.
+      // (Previously this swallowed all unlink errors, potentially leaving files on disk.)
+      if (
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as { code?: unknown }).code === "ENOENT"
+      ) {
+        return;
+      }
+      throw err;
     }
   }
 }

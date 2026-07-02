@@ -39,7 +39,7 @@ export type SessionDetailsResponse = {
   lastActiveAt: string;
   createdAt: string;
   history: Array<{ role: string; content: string }>;
-  userTasks?: Array<{ text: string; createdAt?: string }>;
+  userTasks?: Array<{ text: string; createdAt: string }>;
   events?: AgentEvent[];
   diagnostics?: {
     sessionId: string;

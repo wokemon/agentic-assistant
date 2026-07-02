@@ -268,12 +268,6 @@ export function registerSessionsRoutes(
     Params: { id: string };
   }>("/api/sessions/:id", async (request, reply) => {
     const { id } = request.params;
-    try {
-      await sessionStore.getSession(id);
-    } catch {
-      reply.code(404);
-      return { error: "Unknown session" };
-    }
     await sessionStore.deleteSession(id);
     reply.code(204);
     return;

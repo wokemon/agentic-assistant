@@ -73,39 +73,11 @@ function formatTime(iso: string) {
   return d.toLocaleString();
 }
 
-function formatRelativeTime(iso: string | undefined | null): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHr = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHr / 24);
-
-  if (diffSec < 60) return "just now";
-  if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? "" : "s"} ago`;
-  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? "" : "s"} ago`;
-
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (
-    d.getFullYear() === yesterday.getFullYear() &&
-    d.getMonth() === yesterday.getMonth() &&
-    d.getDate() === yesterday.getDate()
-  ) {
-    return `yesterday at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-  }
-
-  if (diffDay < 7) return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
-
-  return d.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
+function formatRelativeTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -274,6 +246,7 @@ function buildChatFromSession(details: SessionDetailsResponse): ChatItem[] {
       id: crypto.randomUUID(),
       role: "assistant",
       content: finalAnswers[i].text,
+      createdAt,
     });
   }
 
@@ -480,8 +453,15 @@ export default function App() {
     }
   }
 
-  function pushChat(role: ChatItem["role"], content: string) {
-    setChat((prev) => [...prev, { id: crypto.randomUUID(), role, content }]);
+  function pushChat(
+    role: ChatItem["role"],
+    content: string,
+    createdAt?: string,
+  ) {
+    setChat((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role, content, createdAt },
+    ]);
   }
 
   function updateTimelineToolResult(
@@ -521,7 +501,7 @@ export default function App() {
     lastTaskRef.current = trimmed;
 
     // Local optimistic UI for the user message.
-    pushChat("user", trimmed);
+    pushChat("user", trimmed, new Date().toISOString());
 
     try {
       await postSseStream({
@@ -559,7 +539,7 @@ export default function App() {
           }
 
           if (ev.type === "final_answer") {
-            pushChat("assistant", ev.text);
+            pushChat("assistant", ev.text, new Date().toISOString());
             return;
           }
 
@@ -770,13 +750,36 @@ export default function App() {
                       <div>
                         <div>{m.content}</div>
                         {m.createdAt ? (
-                          <div className="timestamp">
+                          <div
+                            style={{
+                              fontSize: "0.7rem",
+                              opacity: 0.45,
+                              marginTop: 4,
+                              display: "block",
+                              textAlign: "right",
+                            }}
+                          >
                             {formatRelativeTime(m.createdAt)}
                           </div>
                         ) : null}
                       </div>
                     ) : (
-                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                      <div>
+                        <ReactMarkdown>{m.content}</ReactMarkdown>
+                        {m.createdAt ? (
+                          <div
+                            style={{
+                              fontSize: "0.7rem",
+                              opacity: 0.45,
+                              marginTop: 4,
+                              display: "block",
+                              textAlign: "left",
+                            }}
+                          >
+                            {formatRelativeTime(m.createdAt)}
+                          </div>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                 ))}

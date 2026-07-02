@@ -5,7 +5,12 @@ import type { AgentEvent, SessionDetailsResponse } from "./types";
 import type { SessionListItem } from "./types";
 import { postSseStream } from "./sse";
 
-type ChatItem = { id: string; role: "user" | "assistant"; content: string };
+type ChatItem = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt?: string;
+};
 
 type TimelineToolItem = {
   kind: "tool";
@@ -66,6 +71,42 @@ function formatTime(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+function formatRelativeTime(iso: string | undefined | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+
+  const now = Date.now();
+  const diffMs = now - d.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+
+  if (diffSec < 60) return "just now";
+  if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? "" : "s"} ago`;
+  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? "" : "s"} ago`;
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (
+    d.getFullYear() === yesterday.getFullYear() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getDate() === yesterday.getDate()
+  ) {
+    return `yesterday at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  }
+
+  if (diffDay < 7) return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
+
+  return d.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function statusBannerText(status: string, lastReason?: string) {
@@ -220,10 +261,14 @@ function buildChatFromSession(details: SessionDetailsResponse): ChatItem[] {
   const items: ChatItem[] = [];
   const pairCount = Math.min(userTasks.length, finalAnswers.length);
   for (let i = 0; i < pairCount; i++) {
+    const raw = userTasks[i];
+    const text = typeof raw === "string" ? raw : raw.text;
+    const createdAt = typeof raw === "string" ? undefined : raw.createdAt;
     items.push({
       id: crypto.randomUUID(),
       role: "user",
-      content: userTasks[i],
+      content: text,
+      createdAt,
     });
     items.push({
       id: crypto.randomUUID(),
@@ -233,10 +278,14 @@ function buildChatFromSession(details: SessionDetailsResponse): ChatItem[] {
   }
 
   for (let i = pairCount; i < userTasks.length; i++) {
+    const raw = userTasks[i];
+    const text = typeof raw === "string" ? raw : raw.text;
+    const createdAt = typeof raw === "string" ? undefined : raw.createdAt;
     items.push({
       id: crypto.randomUUID(),
       role: "user",
-      content: userTasks[i],
+      content: text,
+      createdAt,
     });
   }
 
@@ -570,8 +619,9 @@ export default function App() {
   async function retryLastTask() {
     const last = details?.userTasks?.at(-1) ?? lastTaskRef.current;
     if (!last) return;
-    setTask(last);
-    await sendTask(last);
+    const lastText = typeof last === "string" ? last : last.text;
+    setTask(lastText);
+    await sendTask(lastText);
   }
 
   const empty = sessions.length === 0;
@@ -717,7 +767,14 @@ export default function App() {
                     }
                   >
                     {m.role === "user" ? (
-                      <div>{m.content}</div>
+                      <div>
+                        <div>{m.content}</div>
+                        {m.createdAt ? (
+                          <div className="timestamp">
+                            {formatRelativeTime(m.createdAt)}
+                          </div>
+                        ) : null}
+                      </div>
                     ) : (
                       <ReactMarkdown>{m.content}</ReactMarkdown>
                     )}

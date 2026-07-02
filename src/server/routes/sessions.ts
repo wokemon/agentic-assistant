@@ -67,6 +67,7 @@ export function registerSessionsRoutes(
   }>("/api/sessions/:id/messages", async (request, reply) => {
     const { id } = request.params;
     const { task } = request.body;
+    const taskCreatedAt = new Date().toISOString();
 
     let sessionRecord: Awaited<ReturnType<FileSessionStore["getSession"]>>;
     try {
@@ -182,6 +183,7 @@ export function registerSessionsRoutes(
           title: normalizedTaskTitle,
           session,
           userTask: task,
+          createdAt: taskCreatedAt,
           events: runEvents,
         });
       } else if (controller.signal.aborted) {
@@ -190,6 +192,7 @@ export function registerSessionsRoutes(
           title: normalizedTaskTitle,
           session,
           userTask: task,
+          createdAt: taskCreatedAt,
           events: runEvents,
           reason: runnerStatus,
         });
@@ -199,6 +202,7 @@ export function registerSessionsRoutes(
           title: normalizedTaskTitle,
           session,
           userTask: task,
+          createdAt: taskCreatedAt,
           events: runEvents,
           reason: runnerStatus,
         });
@@ -209,6 +213,7 @@ export function registerSessionsRoutes(
           title: normalizedTaskTitle,
           session,
           userTask: task,
+          createdAt: taskCreatedAt,
           events: runEvents,
           reason: runnerStatus ?? "unknown",
         });

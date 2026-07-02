@@ -35,7 +35,7 @@ type PersistedSessionFileV1 = {
     interruptedReason?: string;
   };
   conversation: {
-    userTasks: string[];
+    userTasks: Array<{ text: string; createdAt: string }>;
     events: AgentEvent[];
   };
   session: {
@@ -225,7 +225,7 @@ export class FileSessionStore {
     createdAt: string;
     lastActiveAt: string;
     session: SessionState;
-    userTasks: string[];
+    userTasks: Array<{ text: string; createdAt: string }>;
     events: AgentEvent[];
     diagnostics: AgentDiagnostics;
     interruptedReason?: string;
@@ -233,6 +233,10 @@ export class FileSessionStore {
     await this.init();
     try {
       const file = await this.readFile(id);
+      // Normalize old userTasks (plain strings) to structured format.
+      const userTasks = file.conversation.userTasks.map((t) =>
+        typeof t === "string" ? { text: t, createdAt: "" } : t,
+      );
       return {
         sessionId: file.id,
         status: this.toStatus(file),
@@ -240,7 +244,7 @@ export class FileSessionStore {
         createdAt: file.metadata.createdAt,
         lastActiveAt: file.metadata.lastActiveAt,
         session: this.reconstructSession(file),
-        userTasks: file.conversation.userTasks,
+        userTasks,
         events: file.conversation.events,
         diagnostics: file.session.diagnostics,
         interruptedReason: file.metadata.interruptedReason,
@@ -311,12 +315,13 @@ export class FileSessionStore {
     title?: string;
     session: SessionState;
     userTask: string;
+    createdAt: string;
     events: AgentEvent[];
   }) {
     await this.init();
     const file = await this.readFile(opts.id);
 
-    file.conversation.userTasks.push(opts.userTask);
+    file.conversation.userTasks.push({ text: opts.userTask, createdAt: opts.createdAt });
     file.conversation.events.push(...opts.events);
 
     // Update persisted session state.
@@ -345,13 +350,14 @@ export class FileSessionStore {
     title?: string;
     session: SessionState;
     userTask: string;
+    createdAt: string;
     events: AgentEvent[];
     reason?: string;
   }) {
     await this.init();
     const file = await this.readFile(opts.id);
 
-    file.conversation.userTasks.push(opts.userTask);
+    file.conversation.userTasks.push({ text: opts.userTask, createdAt: opts.createdAt });
     file.conversation.events.push(...opts.events);
 
     file.session.memory = opts.session.memory.toState();
